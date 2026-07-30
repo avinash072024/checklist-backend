@@ -27,10 +27,10 @@ const io = new Server(server, {
 app.locals.io = io;
 
 io.on('connection', (socket) => {
-  console.log(`[Socket] Client connected: ${socket.id}`);
+  // console.log(`[Socket] Client connected: ${socket.id}`);
 
   socket.on('disconnect', () => {
-    console.log(`[Socket] Client disconnected: ${socket.id}`);
+    // console.log(`[Socket] Client disconnected: ${socket.id}`);
   });
 });
 
