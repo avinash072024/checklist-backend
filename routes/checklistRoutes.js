@@ -5,6 +5,9 @@ const authMiddleware = require('../utils/authMiddleware');
 
 router.use(authMiddleware);
 
+// Fast stats for dashboard (counts only)
+router.get('/dashboard-stats', checklistController.getDashboardStats);
+
 // Collection routes
 router.get('/all', checklistController.getAllChecklists);
 router.get('/my-lists', checklistController.getMyChecklists);

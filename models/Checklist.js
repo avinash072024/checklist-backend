@@ -35,4 +35,8 @@ const checklistSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
+// Index for fast lookups by creator (used in getMyChecklists and getOtherChecklists)
+checklistSchema.index({ createdBy: 1 });
+checklistSchema.index({ createdAt: -1 });
+
 module.exports = mongoose.model('Checklist', checklistSchema);

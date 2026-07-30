@@ -1,16 +1,60 @@
 const Checklist = require('../models/Checklist');
 
+// Helper to get the io instance from request
+const getIo = (req) => req.app.locals.io;
+
+// Helper to format user objects with guaranteed fullname
+const formatUser = (user) => {
+    if (!user || typeof user !== 'object') return user;
+    const plainUser = typeof user.toObject === 'function' ? user.toObject({ virtuals: true }) : { ...user };
+    return {
+        ...plainUser,
+        fullname: plainUser.fullname || `${plainUser.firstName || ''} ${plainUser.lastName || ''}`.trim()
+    };
+};
+
+// Helper to format checklist document and subdocuments
+const formatChecklist = (doc) => {
+    if (!doc) return doc;
+    const item = typeof doc.toObject === 'function' ? doc.toObject({ virtuals: true }) : { ...doc };
+    if (item.createdBy) item.createdBy = formatUser(item.createdBy);
+    if (item.frozenBy) item.frozenBy = formatUser(item.frozenBy);
+    if (Array.isArray(item.listItems)) {
+        item.listItems = item.listItems.map(li => ({
+            ...li,
+            createdBy: formatUser(li.createdBy),
+            completedBy: formatUser(li.completedBy)
+        }));
+    }
+    return item;
+};
+
+// 0. Fast dashboard stats — counts only, no populate
+exports.getDashboardStats = async (req, res) => {
+    try {
+        const userId = req.user.userId || req.user.id;
+        const [total, mine, others] = await Promise.all([
+            Checklist.countDocuments({}),
+            Checklist.countDocuments({ createdBy: userId }),
+            Checklist.countDocuments({ createdBy: { $ne: userId } })
+        ]);
+        res.json({ success: true, data: { total, mine, others } });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
+
 // 1. Get checklists created ONLY by the authenticated user
 exports.getMyChecklists = async (req, res) => {
     try {
         const userId = req.user.userId || req.user.id;
         const lists = await Checklist.find({ createdBy: userId })
-            .populate('listItems.completedBy', 'username firstName lastName fullname')
-            .populate('listItems.createdBy', 'username firstName lastName fullname')
-            .populate('createdBy', 'username firstName lastName fullname')
-            .populate('frozenBy', 'username firstName lastName fullname');
+            .populate('createdBy', 'firstName lastName email')
+            .populate('frozenBy', 'firstName lastName email')
+            .lean();
 
-        res.json({ success: true, count: lists.length, data: lists });
+        const formattedLists = lists.map(formatChecklist);
+        res.json({ success: true, count: formattedLists.length, data: formattedLists });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
@@ -21,12 +65,12 @@ exports.getOtherChecklists = async (req, res) => {
     try {
         const userId = req.user.userId || req.user.id;
         const lists = await Checklist.find({ createdBy: { $ne: userId } })
-            .populate('listItems.completedBy', 'username firstName lastName fullname')
-            .populate('listItems.createdBy', 'username firstName lastName fullname')
-            .populate('createdBy', 'username firstName lastName fullname')
-            .populate('frozenBy', 'username firstName lastName fullname');
+            .populate('createdBy', 'firstName lastName email')
+            .populate('frozenBy', 'firstName lastName email')
+            .lean();
 
-        res.json({ success: true, count: lists.length, data: lists });
+        const formattedLists = lists.map(formatChecklist);
+        res.json({ success: true, count: formattedLists.length, data: formattedLists });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
@@ -36,12 +80,12 @@ exports.getOtherChecklists = async (req, res) => {
 exports.getAllChecklists = async (req, res) => {
     try {
         const lists = await Checklist.find({}).sort({ createdAt: -1 })
-            .populate('listItems.completedBy', 'username firstName lastName fullname')
-            .populate('listItems.createdBy', 'username firstName lastName fullname')
-            .populate('createdBy', 'username firstName lastName fullname')
-            .populate('frozenBy', 'username firstName lastName fullname');
+            .populate('createdBy', 'firstName lastName email')
+            .populate('frozenBy', 'firstName lastName email')
+            .lean();
 
-        res.json({ success: true, count: lists.length, data: lists });
+        const formattedLists = lists.map(formatChecklist);
+        res.json({ success: true, count: formattedLists.length, data: formattedLists });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
@@ -52,16 +96,16 @@ exports.getChecklistById = async (req, res) => {
     try {
         const { list_id } = req.params;
         const checklist = await Checklist.findById(list_id)
-            .populate('listItems.completedBy', 'username firstName lastName fullname')
-            .populate('listItems.createdBy', 'username firstName lastName fullname')
-            .populate('createdBy', 'username firstName lastName fullname')
-            .populate('frozenBy', 'username firstName lastName fullname'); // <-- Added here
+            .populate('listItems.completedBy', 'firstName lastName email')
+            .populate('listItems.createdBy', 'firstName lastName email')
+            .populate('createdBy', 'firstName lastName email')
+            .populate('frozenBy', 'firstName lastName email');
 
         if (!checklist) {
             return res.status(404).json({ success: false, message: 'Checklist not found' });
         }
 
-        res.json({ success: true, data: checklist });
+        res.json({ success: true, data: formatChecklist(checklist) });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
@@ -97,7 +141,7 @@ exports.createChecklist = async (req, res) => {
                 text: (typeof item === 'string' ? item : item.text).trim(),
                 completed: false,
                 completedBy: null,
-                createdBy: userId // <-- Assign logged-in user ID here
+                createdBy: userId
             }));
         }
 
@@ -109,7 +153,19 @@ exports.createChecklist = async (req, res) => {
         });
 
         await newList.save();
-        res.status(201).json({ success: true, message: 'List created successfully', data: newList });
+
+        const populatedList = await Checklist.findById(newList._id)
+            .populate('listItems.completedBy', 'firstName lastName email')
+            .populate('listItems.createdBy', 'firstName lastName email')
+            .populate('createdBy', 'firstName lastName email')
+            .populate('frozenBy', 'firstName lastName email');
+
+        const formattedData = formatChecklist(populatedList);
+
+        // Notify all connected clients that a new checklist was created
+        getIo(req).emit('checklist:created', { checklistId: newList._id });
+
+        res.status(201).json({ success: true, message: 'List created successfully', data: formattedData });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
@@ -159,7 +215,6 @@ exports.updateChecklist = async (req, res) => {
                     completedBy = null;
                 }
 
-                // Preserve original item creator, or assign current logged-in user for new items
                 const itemCreator = existingItem && existingItem.createdBy ? existingItem.createdBy : userId;
 
                 return {
@@ -171,8 +226,20 @@ exports.updateChecklist = async (req, res) => {
             });
         }
 
-        const updatedList = await checklist.save();
-        res.json({ success: true, message: 'Checklist updated successfully', data: updatedList });
+        await checklist.save();
+
+        const populatedList = await Checklist.findById(checklistId)
+            .populate('listItems.completedBy', 'firstName lastName email')
+            .populate('listItems.createdBy', 'firstName lastName email')
+            .populate('createdBy', 'firstName lastName email')
+            .populate('frozenBy', 'firstName lastName email');
+
+        const formattedData = formatChecklist(populatedList);
+
+        // Notify all clients that this checklist was updated
+        getIo(req).emit('checklist:updated', { checklistId });
+
+        res.json({ success: true, message: 'Checklist updated successfully', data: formattedData });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
@@ -183,6 +250,10 @@ exports.deleteChecklist = async (req, res) => {
     try {
         const { id } = req.params;
         await Checklist.findByIdAndDelete(id);
+
+        // Notify all clients that a checklist was deleted
+        getIo(req).emit('checklist:deleted', { checklistId: id });
+
         res.json({ success: true, message: 'Checklist deleted successfully' });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
@@ -203,7 +274,6 @@ exports.deleteListItem = async (req, res) => {
             return res.status(400).json({ success: false, message: 'This checklist is completed and cannot be modified.' });
         }
 
-        // Find the specific item index or use Mongoose subdocument pull
         const item = checklist.listItems.id(itemId);
         if (!item) {
             return res.status(404).json({ success: false, message: 'List item not found' });
@@ -212,7 +282,18 @@ exports.deleteListItem = async (req, res) => {
         checklist.listItems.pull(itemId);
         await checklist.save();
 
-        res.json({ success: true, message: 'List item deleted successfully', data: checklist });
+        const populatedList = await Checklist.findById(checklistId)
+            .populate('listItems.completedBy', 'firstName lastName email')
+            .populate('listItems.createdBy', 'firstName lastName email')
+            .populate('createdBy', 'firstName lastName email')
+            .populate('frozenBy', 'firstName lastName email');
+
+        const formattedData = formatChecklist(populatedList);
+
+        // Notify all clients that an item was deleted from this checklist
+        getIo(req).emit('checklist:item-deleted', { checklistId, itemId });
+
+        res.json({ success: true, message: 'List item deleted successfully', data: formattedData });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
@@ -241,7 +322,6 @@ exports.addItemToChecklist = async (req, res) => {
         const trimmedText = text.trim();
         const lowerText = trimmedText.toLowerCase();
 
-        // Check for duplicate item name within this specific list
         const duplicateExists = checklist.listItems.some(
             item => item.text.trim().toLowerCase() === lowerText
         );
@@ -253,7 +333,6 @@ exports.addItemToChecklist = async (req, res) => {
             });
         }
 
-        // Push new item into the subdocument array
         checklist.listItems.push({
             text: trimmedText,
             completed: false,
@@ -262,7 +341,19 @@ exports.addItemToChecklist = async (req, res) => {
         });
 
         await checklist.save();
-        res.status(201).json({ success: true, message: 'Item added successfully', data: checklist });
+
+        const populatedList = await Checklist.findById(checklistId)
+            .populate('listItems.completedBy', 'firstName lastName email')
+            .populate('listItems.createdBy', 'firstName lastName email')
+            .populate('createdBy', 'firstName lastName email')
+            .populate('frozenBy', 'firstName lastName email');
+
+        const formattedData = formatChecklist(populatedList);
+
+        // Notify all clients that a new item was added to this checklist
+        getIo(req).emit('checklist:item-added', { checklistId });
+
+        res.status(201).json({ success: true, message: 'Item added successfully', data: formattedData });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
@@ -272,7 +363,7 @@ exports.addItemToChecklist = async (req, res) => {
 exports.toggleListItemComplete = async (req, res) => {
     try {
         const { checklistId, itemId } = req.params;
-        const { completed } = req.body; // Expects boolean (true/false)
+        const { completed } = req.body;
         const userId = req.user.userId || req.user.id;
 
         const checklist = await Checklist.findById(checklistId);
@@ -289,19 +380,23 @@ exports.toggleListItemComplete = async (req, res) => {
             return res.status(404).json({ success: false, message: 'List item not found' });
         }
 
-        // Update item completion status and completedBy tracker
         item.completed = completed !== undefined ? completed : !item.completed;
         item.completedBy = item.completed ? userId : null;
 
         await checklist.save();
 
-        // Re-fetch or populate the updated checklist to return full user details (including fullname virtual)
         const updatedChecklist = await Checklist.findById(checklistId)
-            .populate('listItems.completedBy', 'username firstName lastName fullname')
-            .populate('listItems.createdBy', 'username firstName lastName fullname')
-            .populate('createdBy', 'username firstName lastName fullname');
+            .populate('listItems.completedBy', 'firstName lastName email')
+            .populate('listItems.createdBy', 'firstName lastName email')
+            .populate('createdBy', 'firstName lastName email')
+            .populate('frozenBy', 'firstName lastName email');
 
-        res.json({ success: true, message: 'Item status changed successfully', data: updatedChecklist });
+        const formattedData = formatChecklist(updatedChecklist);
+
+        // Notify all clients that an item was toggled on this checklist
+        getIo(req).emit('checklist:item-toggled', { checklistId, itemId });
+
+        res.json({ success: true, message: 'Item status changed successfully', data: formattedData });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
@@ -320,22 +415,25 @@ exports.toggleFreezeChecklist = async (req, res) => {
         }
 
         checklist.isFreeze = isFreeze !== undefined ? isFreeze : !checklist.isFreeze;
-
-        // Stamp frozenBy if freezing, clear if unfreezing
         checklist.frozenBy = checklist.isFreeze ? userId : null;
 
         await checklist.save();
 
         const updatedChecklist = await Checklist.findById(checklistId)
-            .populate('listItems.completedBy', 'username firstName lastName fullname')
-            .populate('listItems.createdBy', 'username firstName lastName fullname')
-            .populate('createdBy', 'username firstName lastName fullname')
-            .populate('frozenBy', 'username firstName lastName fullname');
+            .populate('listItems.completedBy', 'firstName lastName email')
+            .populate('listItems.createdBy', 'firstName lastName email')
+            .populate('createdBy', 'firstName lastName email')
+            .populate('frozenBy', 'firstName lastName email');
+
+        const formattedData = formatChecklist(updatedChecklist);
+
+        // Notify all clients that a checklist was frozen/unfrozen
+        getIo(req).emit('checklist:frozen', { checklistId, isFreeze: checklist.isFreeze });
 
         res.json({
             success: true,
             message: `Checklist ${checklist.isFreeze ? 'completed' : 'activate'} successfully`,
-            data: updatedChecklist
+            data: formattedData
         });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
