@@ -5,8 +5,10 @@ exports.getMyChecklists = async (req, res) => {
     try {
         const userId = req.user.userId || req.user.id;
         const lists = await Checklist.find({ createdBy: userId })
-            .populate('listItems.completedBy', 'username email')
-            .populate('createdBy', 'username email');
+            .populate('listItems.completedBy', 'username firstName lastName fullname')
+            .populate('listItems.createdBy', 'username firstName lastName fullname')
+            .populate('createdBy', 'username firstName lastName fullname')
+            .populate('frozenBy', 'username firstName lastName fullname');
 
         res.json({ success: true, count: lists.length, data: lists });
     } catch (err) {
@@ -19,8 +21,10 @@ exports.getOtherChecklists = async (req, res) => {
     try {
         const userId = req.user.userId || req.user.id;
         const lists = await Checklist.find({ createdBy: { $ne: userId } })
-            .populate('listItems.completedBy', 'username email')
-            .populate('createdBy', 'username email');
+            .populate('listItems.completedBy', 'username firstName lastName fullname')
+            .populate('listItems.createdBy', 'username firstName lastName fullname')
+            .populate('createdBy', 'username firstName lastName fullname')
+            .populate('frozenBy', 'username firstName lastName fullname');
 
         res.json({ success: true, count: lists.length, data: lists });
     } catch (err) {
@@ -124,7 +128,7 @@ exports.updateChecklist = async (req, res) => {
         }
 
         if (checklist.isFreeze) {
-            return res.status(400).json({ success: false, message: 'This checklist is frozen and cannot be modified.' });
+            return res.status(400).json({ success: false, message: 'This checklist is completed and cannot be modified.' });
         }
 
         if (title !== undefined) checklist.title = title.trim();
@@ -196,7 +200,7 @@ exports.deleteListItem = async (req, res) => {
         }
 
         if (checklist.isFreeze) {
-            return res.status(400).json({ success: false, message: 'This checklist is frozen and cannot be modified.' });
+            return res.status(400).json({ success: false, message: 'This checklist is completed and cannot be modified.' });
         }
 
         // Find the specific item index or use Mongoose subdocument pull
@@ -231,7 +235,7 @@ exports.addItemToChecklist = async (req, res) => {
         }
 
         if (checklist.isFreeze) {
-            return res.status(400).json({ success: false, message: 'This checklist is frozen and cannot be modified.' });
+            return res.status(400).json({ success: false, message: 'This checklist is completed and cannot be modified.' });
         }
 
         const trimmedText = text.trim();
@@ -277,7 +281,7 @@ exports.toggleListItemComplete = async (req, res) => {
         }
 
         if (checklist.isFreeze) {
-            return res.status(400).json({ success: false, message: 'This checklist is frozen and cannot be modified.' });
+            return res.status(400).json({ success: false, message: 'This checklist is completed and cannot be modified.' });
         }
 
         const item = checklist.listItems.id(itemId);
@@ -330,7 +334,7 @@ exports.toggleFreezeChecklist = async (req, res) => {
 
         res.json({
             success: true,
-            message: `Checklist successfully ${checklist.isFreeze ? 'frozen' : 'unfrozen'}`,
+            message: `Checklist ${checklist.isFreeze ? 'completed' : 'activate'} successfully`,
             data: updatedChecklist
         });
     } catch (err) {
