@@ -15,15 +15,15 @@ const sendOTPEmail = async (email, otp, purpose = 'Password Reset') => {
     const smtpPort = process.env.SMTP_PORT || process.env.EMAIL_PORT || 465;
     const smtpUser = process.env.SMTP_USER || process.env.EMAIL_USER;
     const smtpPass = process.env.SMTP_PASS || process.env.EMAIL_PASS;
-    const fromEmail = process.env.EMAIL_FROM || smtpUser || '"Checklist App" <avinashmarbhal1994@outlook.com>';
+    const fromEmail = process.env.EMAIL_FROM || smtpUser || '"CheckList App" <avinashmarbhal1994@outlook.com>';
 
     if (smtpHost && smtpUser && smtpPass) {
         try {
             const transporter = nodemailer.createTransport({
                 host: smtpHost,
                 port: Number(smtpPort),
-                // secure: Number(smtpPort) === 465,
-                secure: true,
+                secure: Number(smtpPort) === 465,
+                // secure: true,
                 auth: {
                     user: smtpUser,
                     pass: smtpPass
@@ -33,10 +33,11 @@ const sendOTPEmail = async (email, otp, purpose = 'Password Reset') => {
             const mailOptions = {
                 from: fromEmail,
                 to: email,
-                subject: `Your ${purpose} Verification Code`,
+                subject: `${purpose} Verification Code`,
                 html: `
-                    <div style="font-family: Verdana, sans-serif; padding: 20px; color: #333; max-width: 500px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px;">
-                        <h2 style="color: #4F46E5; text-align: center;">Checklist App - ${purpose} Verification Code</h2>
+                    <div style="font-family: Calibri, sans-serif; padding: 20px; color: #333; max-width: 500px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px;">
+                        <h2 style="color: #4F46E5; text-align: center;">CheckList App</h2>
+                        <h3 style="color: #4F46E5; text-align: center;">${purpose} Verification Code</h3>
                         <p>Hello,</p>
                         <p>You requested a verification code for <strong>${purpose}</strong>.</p>
                         <div style="background-color: #F3F4F6; padding: 15px; text-align: center; border-radius: 6px; font-size: 24px; font-weight: bold; letter-spacing: 4px; color: #1F2937; margin: 20px 0;">
