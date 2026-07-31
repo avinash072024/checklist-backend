@@ -12,6 +12,7 @@ router.get('/dashboard-stats', checklistController.getDashboardStats);
 router.get('/all', checklistController.getAllChecklists);
 router.get('/my-lists', checklistController.getMyChecklists);
 router.get('/other-lists', checklistController.getOtherChecklists);
+router.get('/my-private-lists', checklistController.getMyPrivateChecklists);
 router.post('/', checklistController.createChecklist);
 
 // Specific list / item routes

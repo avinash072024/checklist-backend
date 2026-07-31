@@ -32,11 +32,15 @@ const checklistSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     default: null
+  },
+  isPrivate: {
+    type: Boolean,
+    default: false
   }
 }, { timestamps: true });
 
-// Index for fast lookups by creator (used in getMyChecklists and getOtherChecklists)
-checklistSchema.index({ createdBy: 1 });
+// Index for fast lookups by creator and privacy
+checklistSchema.index({ createdBy: 1, isPrivate: 1 });
 checklistSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model('Checklist', checklistSchema);
