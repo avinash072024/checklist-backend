@@ -158,7 +158,7 @@ exports.signIn = async (req, res) => {
 
         const user = await User.findOne({ mobileNumber: Number(mobileNumber) });
         if (!user) {
-            return res.status(400).json({ success: false, message: 'Invalid credentials. Please try again' });
+            return res.status(400).json({ success: false, message: 'Mobile number not found' });
         }
 
         if (!user.isVerified) {
