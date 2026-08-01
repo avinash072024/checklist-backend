@@ -27,6 +27,18 @@ const userSchema = new mongoose.Schema({
         type: String,
         required: [true, 'Password is required']
     },
+    isVerified: {
+        type: Boolean,
+        default: false
+    },
+    registrationOTP: {
+        type: String,
+        default: null
+    },
+    registrationOTPExpires: {
+        type: Date,
+        default: null
+    },
     resetPasswordOTP: {
         type: String,
         default: null

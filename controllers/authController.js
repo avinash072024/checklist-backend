@@ -25,6 +25,17 @@ const generateToken = (id, name, email, mobileNumber) => {
     });
 };
 
+const sendRegistrationOTP = async (user) => {
+    const otp = generateOTP();
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+
+    user.registrationOTP = otp;
+    user.registrationOTPExpires = otpExpires;
+    await user.save();
+
+    await sendOTP(user, otp, 'Registration');
+};
+
 // Register User
 exports.register = async (req, res) => {
     try {
@@ -50,23 +61,33 @@ exports.register = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Password is required' });
         }
 
+        const normalizedEmail = email.toLowerCase().trim();
+        const normalizedMobile = Number(mobileNumber);
+
         // Check if email & mobileNumber already exists
         const existingUser = await User.findOne({
             $or: [
-                { email: email.toLowerCase().trim() },
-                { mobileNumber: Number(mobileNumber) }
+                { email: normalizedEmail },
+                { mobileNumber: normalizedMobile }
             ]
         });
 
         if (existingUser) {
-            if (existingUser.email === email.toLowerCase().trim()) {
+            if (!existingUser.isVerified) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'An account already exists with this email or mobile number but is not verified. Please verify your account or request a new OTP.'
+                });
+            }
+
+            if (existingUser.email === normalizedEmail) {
                 return res.status(400).json({
                     success: false,
                     message: 'User with this email already exists'
                 });
             }
 
-            if (existingUser.mobileNumber === Number(mobileNumber)) {
+            if (existingUser.mobileNumber === normalizedMobile) {
                 return res.status(400).json({
                     success: false,
                     message: 'User with this mobile number already exists'
@@ -78,19 +99,24 @@ exports.register = async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // Save to DB
         const user = await User.create({
             firstName,
             lastName,
-            email: email.toLowerCase().trim(),
-            mobileNumber,
-            password: hashedPassword
+            email: normalizedEmail,
+            mobileNumber: normalizedMobile,
+            password: hashedPassword,
+            isVerified: false
         });
+
+        await sendRegistrationOTP(user);
 
         res.status(201).json({
             success: true,
-            message: 'User registered successfully',
-            token: generateToken(user._id, `${user.firstName} ${user.lastName}`, user.email, user.mobileNumber)
+            message: 'Registration successful. Please verify your account with the OTP sent to your email/mobile.',
+            data: {
+                email: user.email ? user.email.replace(/(.{2})(.*)(?=@)/, '$1***') : null,
+                mobileNumber: user.mobileNumber ? String(user.mobileNumber).slice(-4).padStart(String(user.mobileNumber).length, '*') : null
+            }
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -113,6 +139,13 @@ exports.signIn = async (req, res) => {
         const user = await User.findOne({ mobileNumber: Number(mobileNumber) });
         if (!user) {
             return res.status(400).json({ success: false, message: 'Invalid credentials. Please try again' });
+        }
+
+        if (!user.isVerified) {
+            return res.status(403).json({
+                success: false,
+                message: 'Account is not verified. Please verify your account using the OTP sent during registration.'
+            });
         }
 
         const isMatch = await bcrypt.compare(password, user.password);
@@ -216,9 +249,87 @@ exports.verifyOTP = async (req, res) => {
     }
 };
 
-// Reset Password using OTP
-exports.resetPassword = async (req, res) => {
+// Verify Registration OTP
+exports.verifyRegistrationOTP = async (req, res) => {
     try {
+        const { identifier, email, mobileNumber, otp } = req.body;
+        const searchVal = identifier || email || mobileNumber;
+
+        if (!searchVal) {
+            return res.status(400).json({ success: false, message: 'Please provide email or mobile number' });
+        }
+
+        if (!otp) {
+            return res.status(400).json({ success: false, message: 'Please provide OTP' });
+        }
+
+        const user = await findUserByIdentifier(searchVal);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        if (user.isVerified) {
+            return res.status(400).json({ success: false, message: 'Account is already verified' });
+        }
+
+        if (!user.registrationOTP || !user.registrationOTPExpires) {
+            return res.status(400).json({ success: false, message: 'No registration OTP found. Please request a new OTP' });
+        }
+
+        if (new Date() > new Date(user.registrationOTPExpires)) {
+            return res.status(400).json({ success: false, message: 'OTP has expired. Please request a new OTP' });
+        }
+
+        if (user.registrationOTP !== String(otp).trim()) {
+            return res.status(400).json({ success: false, message: 'Invalid OTP. Please check and try again' });
+        }
+
+        user.isVerified = true;
+        user.registrationOTP = null;
+        user.registrationOTPExpires = null;
+        await user.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Account verified successfully. You can now sign in.'
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// Resend Registration OTP
+exports.resendRegistrationOTP = async (req, res) => {
+    try {
+        const { identifier, email, mobileNumber } = req.body;
+        const searchVal = identifier || email || mobileNumber;
+
+        if (!searchVal) {
+            return res.status(400).json({ success: false, message: 'Please provide email or mobile number' });
+        }
+
+        const user = await findUserByIdentifier(searchVal);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        if (user.isVerified) {
+            return res.status(400).json({ success: false, message: 'Account is already verified' });
+        }
+
+        await sendRegistrationOTP(user);
+
+        res.status(200).json({
+            success: true,
+            message: 'A new registration OTP has been sent to your registered email/mobile.'
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// Reset Password using OTP
+exports.resetPassword = async (req, res) => {    try {
         const { identifier, email, mobileNumber, otp, newPassword } = req.body;
         const searchVal = identifier || email || mobileNumber;
 

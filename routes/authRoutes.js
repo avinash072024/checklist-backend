@@ -6,6 +6,8 @@ const {
     forgotPassword,
     verifyOTP,
     resetPassword,
+    verifyRegistrationOTP,
+    resendRegistrationOTP,
     sendChangePasswordOTP,
     changePassword
 } = require('../controllers/authController');
@@ -18,6 +20,10 @@ router.post('/signin', signIn);
 router.post('/forgot-password', forgotPassword);
 router.post('/verify-otp', verifyOTP);
 router.post('/reset-password', resetPassword);
+
+// Registration OTP verification
+router.post('/verify-registration-otp', verifyRegistrationOTP);
+router.post('/resend-registration-otp', resendRegistrationOTP);
 
 // Change Password Flow (Authenticated)
 router.post('/send-change-password-otp', authMiddleware, sendChangePasswordOTP);
