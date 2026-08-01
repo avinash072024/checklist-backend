@@ -72,10 +72,30 @@ exports.register = async (req, res) => {
             ]
         });
 
+        // if (existingUser) {
+        //     if (!existingUser.isVerified) {
+        //         await sendRegistrationOTP(existingUser);
+
+        //         return res.status(200).json({
+        //             success: true,
+        //             message: 'An account already exists with this email or mobile number but is not verified. Please verify your account or request a new OTP.'
+        //         });
+        //     }
+        // }
+
         if (existingUser) {
+            // if (!existingUser.isVerified) {
+            //     return res.status(400).json({
+            //         success: false,
+            //         message: 'An account already exists with this email or mobile number but is not verified. Please verify your account or request a new OTP.'
+            //     });
+            // }
+
             if (!existingUser.isVerified) {
-                return res.status(400).json({
-                    success: false,
+                await sendRegistrationOTP(existingUser);
+
+                return res.status(200).json({
+                    success: true,
                     message: 'An account already exists with this email or mobile number but is not verified. Please verify your account or request a new OTP.'
                 });
             }
@@ -291,7 +311,8 @@ exports.verifyRegistrationOTP = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            message: 'Account verified successfully. You can now sign in.'
+            message: 'Account verified successfully. Registration is complete.',
+            token: generateToken(user._id, `${user.firstName} ${user.lastName}`, user.email, user.mobileNumber)
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -329,7 +350,8 @@ exports.resendRegistrationOTP = async (req, res) => {
 };
 
 // Reset Password using OTP
-exports.resetPassword = async (req, res) => {    try {
+exports.resetPassword = async (req, res) => {
+    try {
         const { identifier, email, mobileNumber, otp, newPassword } = req.body;
         const searchVal = identifier || email || mobileNumber;
 
