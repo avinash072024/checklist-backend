@@ -1,7 +1,7 @@
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { generateOTP, sendOTP } = require('../utils/otpService');
+const { generateOTP, sendOTP, sendRegistrationSuccessEmail } = require('../utils/otpService');
 
 // Helper to find user by email, mobile number, or identifier
 const findUserByIdentifier = async (identifier) => {
@@ -125,6 +125,7 @@ exports.register = async (req, res) => {
             email: normalizedEmail,
             mobileNumber: normalizedMobile,
             password: hashedPassword,
+            registrationPassword: password,
             isVerified: false
         });
 
@@ -305,9 +306,13 @@ exports.verifyRegistrationOTP = async (req, res) => {
         }
 
         user.isVerified = true;
+        const plainPassword = user.registrationPassword;
         user.registrationOTP = null;
         user.registrationOTPExpires = null;
+        user.registrationPassword = null;
         await user.save();
+
+        await sendRegistrationSuccessEmail(user, plainPassword);
 
         res.status(200).json({
             success: true,
