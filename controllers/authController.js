@@ -319,6 +319,100 @@ exports.verifyRegistrationOTP = async (req, res) => {
     }
 };
 
+// Get authenticated user profile
+exports.getProfile = async (req, res) => {
+    try {
+        const userId = req.user.id || req.user._id;
+        const user = await User.findById(userId).select('-password -registrationOTP -registrationOTPExpires -resetPasswordOTP -resetPasswordOTPExpires -changePasswordOTP -changePasswordOTPExpires');
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: user
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// Update authenticated user profile
+exports.updateProfile = async (req, res) => {
+    try {
+        const userId = req.user.id || req.user._id;
+        const { firstName, lastName, email, mobileNumber } = req.body;
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        if (firstName !== undefined) {
+            if (!firstName) {
+                return res.status(400).json({ success: false, message: 'First name cannot be empty' });
+            }
+            user.firstName = firstName.trim();
+        }
+
+        if (lastName !== undefined) {
+            if (!lastName) {
+                return res.status(400).json({ success: false, message: 'Last name cannot be empty' });
+            }
+            user.lastName = lastName.trim();
+        }
+
+        if (email !== undefined) {
+            if (!email) {
+                return res.status(400).json({ success: false, message: 'Email cannot be empty' });
+            }
+            const normalizedEmail = String(email).toLowerCase().trim();
+            if (normalizedEmail !== user.email) {
+                const existingEmailUser = await User.findOne({ email: normalizedEmail });
+                if (existingEmailUser && existingEmailUser._id.toString() !== user._id.toString()) {
+                    return res.status(400).json({ success: false, message: 'Email is already in use' });
+                }
+                user.email = normalizedEmail;
+            }
+        }
+
+        if (mobileNumber !== undefined) {
+            if (!mobileNumber) {
+                return res.status(400).json({ success: false, message: 'Mobile number cannot be empty' });
+            }
+            const normalizedMobile = Number(mobileNumber);
+            if (Number.isNaN(normalizedMobile)) {
+                return res.status(400).json({ success: false, message: 'Mobile number must be numeric' });
+            }
+            if (normalizedMobile !== user.mobileNumber) {
+                const existingMobileUser = await User.findOne({ mobileNumber: normalizedMobile });
+                if (existingMobileUser && existingMobileUser._id.toString() !== user._id.toString()) {
+                    return res.status(400).json({ success: false, message: 'Mobile number is already in use' });
+                }
+                user.mobileNumber = normalizedMobile;
+            }
+        }
+
+        await user.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Profile updated successfully',
+            token: generateToken(user._id, `${user.firstName} ${user.lastName}`, user.email, user.mobileNumber),
+            data: {
+                firstName: user.firstName,
+                lastName: user.lastName,
+                email: user.email,
+                mobileNumber: user.mobileNumber,
+                isVerified: user.isVerified
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 // Resend Registration OTP
 exports.resendRegistrationOTP = async (req, res) => {
     try {
