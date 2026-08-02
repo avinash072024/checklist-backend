@@ -34,16 +34,11 @@ exports.getDashboardStats = async (req, res) => {
     try {
         const userId = req.user.userId || req.user.id;
         const [total, mine, others, privateLists] = await Promise.all([
-            // Total visible checklists: Public ones OR private ones created by this user
-            Checklist.countDocuments({
-                $or: [
-                    { isPrivate: { $ne: true } },
-                    { createdBy: userId }
-                ]
-            }),
-            // Total lists created by the user (both public and private)
-            Checklist.countDocuments({ createdBy: userId }),
-            // Other users' checklists excluding private ones
+            // Total public checklists in the system (excludes all private lists)
+            Checklist.countDocuments({ isPrivate: { $ne: true } }),
+            // Total public lists created by the user
+            Checklist.countDocuments({ createdBy: userId, isPrivate: { $ne: true } }),
+            // Other users' public checklists
             Checklist.countDocuments({ createdBy: { $ne: userId }, isPrivate: { $ne: true } }),
             // Private checklists created by the authenticated user
             Checklist.countDocuments({ createdBy: userId, isPrivate: true })
