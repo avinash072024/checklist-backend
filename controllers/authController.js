@@ -2,6 +2,7 @@ const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { generateOTP, sendOTP, sendRegistrationSuccessEmail } = require('../utils/otpService');
+const Checklist = require('../models/Checklist');
 
 const allowedEmailDomains = new Set([
     'gmail.com',
@@ -462,6 +463,46 @@ exports.updateProfile = async (req, res) => {
                 isVerified: user.isVerified
             }
         });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// Delete authenticated user account (requires current password)
+exports.deleteAccount = async (req, res) => {
+    try {
+        const { password } = req.body;
+
+        if (!password) {
+            return res.status(400).json({ success: false, message: 'Password is required to delete account' });
+        }
+
+        const userId = req.user.id || req.user._id;
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        const isMatch = await bcrypt.compare(String(password), user.password);
+        if (!isMatch) {
+            return res.status(401).json({ success: false, message: 'Password incorrect. Account not deleted.' });
+        }
+
+        // Delete all checklists created by this user
+        const lists = await Checklist.find({ createdBy: userId }).select('_id').lean();
+        const checklistIds = lists.map(l => l._id.toString());
+        if (checklistIds.length > 0) {
+            await Checklist.deleteMany({ createdBy: userId });
+            // Emit deletion events for each checklist so clients can update
+            const io = req.app && req.app.locals && req.app.locals.io;
+            if (io && typeof io.emit === 'function') {
+                checklistIds.forEach(id => io.emit('checklist:deleted', { checklistId: id }));
+            }
+        }
+
+        await User.findByIdAndDelete(userId);
+
+        res.status(200).json({ success: true, message: 'Account and associated checklists deleted successfully' });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

@@ -64,6 +64,7 @@ exports.getMyChecklists = async (req, res) => {
         const userId = req.user.userId || req.user.id;
         // const lists = await Checklist.find({ createdBy: userId })
         const lists = await Checklist.find({ createdBy: userId, isPrivate: false })
+            .sort({ createdAt: -1 })
             .populate('createdBy', 'firstName lastName email fullname')
             .populate('frozenBy', 'firstName lastName email fullname')
             .lean();
@@ -83,6 +84,7 @@ exports.getOtherChecklists = async (req, res) => {
             createdBy: { $ne: userId },
             isPrivate: { $ne: true }
         })
+            .sort({ createdAt: -1 })
             .populate('createdBy', 'firstName lastName email fullname')
             .populate('frozenBy', 'firstName lastName email fullname')
             .lean();
@@ -115,6 +117,7 @@ exports.getMyPrivateChecklists = async (req, res) => {
     try {
         const userId = req.user.userId || req.user.id;
         const lists = await Checklist.find({ createdBy: userId, isPrivate: true })
+            .sort({ createdAt: -1 })
             .populate('createdBy', 'firstName lastName email fullname')
             .populate('frozenBy', 'firstName lastName email fullname')
             .lean();
