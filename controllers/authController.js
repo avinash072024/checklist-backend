@@ -3,6 +3,41 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { generateOTP, sendOTP, sendRegistrationSuccessEmail } = require('../utils/otpService');
 
+const allowedEmailDomains = new Set([
+    'gmail.com',
+    'googlemail.com',
+    'yahoo.com',
+    'ymail.com',
+    'hotmail.com',
+    'outlook.com',
+    'live.com',
+    'msn.com',
+    'icloud.com',
+    'aol.com',
+    'protonmail.com',
+    'zoho.com',
+    'mail.com',
+    'gmx.com',
+    'me.com',
+    'fastmail.com'
+]);
+
+const isValidEmailFormat = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return typeof email === 'string' && emailRegex.test(email);
+};
+
+const getEmailDomain = (email) => {
+    if (!email || typeof email !== 'string') return null;
+    const parts = email.split('@');
+    return parts.length === 2 ? parts[1].toLowerCase().trim() : null;
+};
+
+const isAllowedEmailDomain = (email) => {
+    const domain = getEmailDomain(email);
+    return domain && allowedEmailDomains.has(domain);
+};
+
 // Helper to find user by email, mobile number, or identifier
 const findUserByIdentifier = async (identifier) => {
     if (!identifier) return null;
@@ -61,7 +96,15 @@ exports.register = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Password is required' });
         }
 
-        const normalizedEmail = email.toLowerCase().trim();
+        const normalizedEmail = String(email).toLowerCase().trim();
+        if (!isValidEmailFormat(normalizedEmail)) {
+            return res.status(400).json({ success: false, message: 'Please enter a valid email address' });
+        }
+
+        if (!isAllowedEmailDomain(normalizedEmail)) {
+            return res.status(400).json({ success: false, message: 'Registration is only allowed with trusted email providers' });
+        }
+
         const normalizedMobile = Number(mobileNumber);
 
         // Check if email & mobileNumber already exists
@@ -373,6 +416,12 @@ exports.updateProfile = async (req, res) => {
                 return res.status(400).json({ success: false, message: 'Email cannot be empty' });
             }
             const normalizedEmail = String(email).toLowerCase().trim();
+            if (!isValidEmailFormat(normalizedEmail)) {
+                return res.status(400).json({ success: false, message: 'Please enter a valid email address' });
+            }
+            if (!isAllowedEmailDomain(normalizedEmail)) {
+                return res.status(400).json({ success: false, message: 'Email must be from a trusted provider' });
+            }
             if (normalizedEmail !== user.email) {
                 const existingEmailUser = await User.findOne({ email: normalizedEmail });
                 if (existingEmailUser && existingEmailUser._id.toString() !== user._id.toString()) {
