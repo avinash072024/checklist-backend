@@ -17,6 +17,7 @@ router.post('/', checklistController.createChecklist);
 
 // Specific list / item routes
 router.get('/:list_id', checklistController.getChecklistById);
+router.get('/:list_id/download', checklistController.downloadChecklistReport);
 router.put('/:checklistId', checklistController.updateChecklist);
 // Route to delete a single list
 router.delete('/:id', checklistController.deleteChecklist);

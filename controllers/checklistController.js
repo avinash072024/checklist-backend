@@ -1,4 +1,17 @@
 const Checklist = require('../models/Checklist');
+const PDFDocument = require('pdfkit');
+const fs = require('fs');
+
+const getUnicodeFontPath = () => {
+    const candidates = [
+        'C:\\Windows\\Fonts\\mangal.ttf',
+        'C:\\Windows\\Fonts\\mangalb.ttf',
+        'C:\\Windows\\Fonts\\kokila.ttf',
+        'C:\\Windows\\Fonts\\kokilab.ttf',
+        'C:\\Windows\\Fonts\\arialuni.ttf'
+    ];
+    return candidates.find((fontPath) => fs.existsSync(fontPath));
+};
 
 // Helper to get the io instance from request
 const getIo = (req) => req.app.locals.io;
@@ -19,13 +32,20 @@ const formatChecklist = (doc) => {
     const item = typeof doc.toObject === 'function' ? doc.toObject({ virtuals: true }) : { ...doc };
     if (item.createdBy) item.createdBy = formatUser(item.createdBy);
     if (item.frozenBy) item.frozenBy = formatUser(item.frozenBy);
-    if (Array.isArray(item.listItems)) {
-        item.listItems = item.listItems.map(li => ({
+
+    const listItems = Array.isArray(item.listItems)
+        ? item.listItems.map(li => ({
             ...li,
             createdBy: formatUser(li.createdBy),
             completedBy: formatUser(li.completedBy)
-        }));
-    }
+        }))
+        : [];
+
+    item.listItems = listItems;
+    item.totalItems = listItems.length;
+    item.completedItems = listItems.filter(li => li.completed).length;
+    item.pendingItems = item.totalItems - item.completedItems;
+
     return item;
 };
 
@@ -124,6 +144,77 @@ exports.getMyPrivateChecklists = async (req, res) => {
 
         const formattedLists = lists.map(formatChecklist);
         res.json({ success: true, count: formattedLists.length, data: formattedLists });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
+
+// Download a checklist report as PDF
+exports.downloadChecklistReport = async (req, res) => {
+    try {
+        const { list_id } = req.params;
+        const userId = req.user.userId || req.user.id;
+
+        const checklist = await Checklist.findById(list_id)
+            .populate('listItems.completedBy', 'firstName lastName email fullname')
+            .populate('listItems.createdBy', 'firstName lastName email fullname')
+            .populate('createdBy', 'firstName lastName email fullname')
+            .populate('frozenBy', 'firstName lastName email fullname');
+
+        if (!checklist) {
+            return res.status(404).json({ success: false, message: 'Checklist not found' });
+        }
+
+        if (checklist.isPrivate && checklist.createdBy._id.toString() !== userId.toString()) {
+            return res.status(403).json({ success: false, message: 'Access denied to private checklist' });
+        }
+
+        const formattedChecklist = formatChecklist(checklist);
+        // const fileName = `checklist-${formattedChecklist.title.replace(/[^a-z0-9_-]+/gi, '_').toLowerCase()}.pdf`;
+        const fileName = `Checklist ${formattedChecklist.title}.pdf`;
+        const unicodeFont = getUnicodeFontPath();
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+
+        const doc = new PDFDocument({ size: 'A4', margin: 40 });
+        if (unicodeFont) {
+            doc.registerFont('Unicode', unicodeFont);
+            doc.font('Unicode');
+        }
+
+        doc.pipe(res);
+
+        doc.fontSize(22).text(formattedChecklist.title || 'Checklist Report', { underline: true });
+        doc.moveDown(0.5);
+
+        doc.fontSize(11).fillColor('#444444');
+        doc.text(`Total items: ${formattedChecklist.totalItems}`);
+        doc.text(`Completed items: ${formattedChecklist.completedItems}`);
+        doc.text(`Pending items: ${formattedChecklist.pendingItems}`);
+        doc.moveDown(0.5);
+
+        if (formattedChecklist.createdBy) {
+            doc.text(`Created by: ${formattedChecklist.createdBy.fullname || formattedChecklist.createdBy.email || 'Unknown'}`);
+        }
+        if (formattedChecklist.createdAt) {
+            doc.text(`Created at: ${new Date(formattedChecklist.createdAt).toLocaleString()}`);
+        }
+        doc.moveDown(0.5);
+
+        doc.fontSize(14).fillColor('#000000').text('Items', { bold: true });
+        doc.moveDown(0.25);
+
+        formattedChecklist.listItems.forEach((item, index) => {
+            const status = item.completed ? 'Completed' : 'Pending';
+            const completedBy = item.completedBy ? ` (by ${item.completedBy.fullname || item.completedBy.email})` : '';
+            doc.fontSize(12).fillColor('#000000').text(
+                `${index + 1}. ${item.text} — ${status}${completedBy}`,
+                { paragraphGap: 4 }
+            );
+        });
+
+        doc.end();
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
