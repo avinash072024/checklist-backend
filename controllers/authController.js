@@ -368,6 +368,69 @@ exports.verifyRegistrationOTP = async (req, res) => {
     }
 };
 
+// Get all users with their full name, total checklist count, and joined date
+exports.getUserList = async (req, res) => {
+    try {
+        const users = await User.aggregate([
+            {
+                $lookup: {
+                    from: 'checklists',
+                    let: { userId: '$_id' },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $and: [
+                                        { $eq: ['$createdBy', '$$userId'] },
+                                        { $eq: ['$isPrivate', false] }
+                                    ]
+                                }
+                            }
+                        }
+                    ],
+                    as: 'checklists'
+                }
+            },
+            {
+                $project: {
+                    _id: 1,
+                    firstName: 1,
+                    lastName: 1,
+                    createdAt: 1,
+                    fullname: {
+                        $trim: {
+                            input: {
+                                $concat: [
+                                    { $ifNull: ['$firstName', ''] },
+                                    ' ',
+                                    { $ifNull: ['$lastName', ''] }
+                                ]
+                            }
+                        }
+                    },
+                    totalChecklist: { $size: '$checklists' }
+                }
+            },
+            {
+                $sort: { createdAt: -1 }
+            }
+        ]);
+
+        const formattedUsers = users.map(({ fullname, totalChecklist, createdAt }) => ({
+            fullname,
+            totalChecklist,
+            joinedDate: createdAt
+        }));
+
+        res.status(200).json({
+            success: true,
+            data: formattedUsers
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 // Get authenticated user profile
 exports.getProfile = async (req, res) => {
     try {
