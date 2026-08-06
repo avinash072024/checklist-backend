@@ -2,17 +2,6 @@ const Checklist = require('../models/Checklist');
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
 
-const getUnicodeFontPath = () => {
-    const candidates = [
-        'C:\\Windows\\Fonts\\mangal.ttf',
-        'C:\\Windows\\Fonts\\mangalb.ttf',
-        'C:\\Windows\\Fonts\\kokila.ttf',
-        'C:\\Windows\\Fonts\\kokilab.ttf',
-        'C:\\Windows\\Fonts\\arialuni.ttf'
-    ];
-    return candidates.find((fontPath) => fs.existsSync(fontPath));
-};
-
 // Helper to get the io instance from request
 const getIo = (req) => req.app.locals.io;
 

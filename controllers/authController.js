@@ -61,6 +61,8 @@ const generateToken = (id, name, email, mobileNumber) => {
     });
 };
 
+const getIo = (req) => req.app.locals.io;
+
 const sendRegistrationOTP = async (user) => {
     const otp = generateOTP();
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
@@ -174,6 +176,8 @@ exports.register = async (req, res) => {
         });
 
         await sendRegistrationOTP(user);
+
+        // getIo(req).emit('user:created', { userId: user._id });
 
         res.status(201).json({
             success: true,
@@ -358,6 +362,8 @@ exports.verifyRegistrationOTP = async (req, res) => {
 
         await sendRegistrationSuccessEmail(user, plainPassword);
 
+        getIo(req).emit('user:created', { userId: user._id });
+
         res.status(200).json({
             success: true,
             message: 'Account verified successfully. Registration is complete.',
@@ -514,6 +520,8 @@ exports.updateProfile = async (req, res) => {
 
         await user.save();
 
+        getIo(req).emit('user:updated', { userId: userId });
+
         res.status(200).json({
             success: true,
             message: 'Profile updated successfully',
@@ -564,6 +572,8 @@ exports.deleteAccount = async (req, res) => {
         }
 
         await User.findByIdAndDelete(userId);
+
+        getIo(req).emit('user:deleted', { userId: userId });
 
         res.status(200).json({ success: true, message: 'Account and associated checklists deleted successfully' });
     } catch (error) {
