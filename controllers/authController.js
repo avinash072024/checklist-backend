@@ -379,6 +379,9 @@ exports.getUserList = async (req, res) => {
     try {
         const users = await User.aggregate([
             {
+                $match: { isVerified: true }
+            },
+            {
                 $lookup: {
                     from: 'checklists',
                     let: { userId: '$_id' },

@@ -7,10 +7,9 @@ const compression = require('compression');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 const checklistRoutes = require('./routes/checklistRoutes');
+const { startChecklistCleanupJob } = require('./controllers/checklistController');
 
 dotenv.config();
-
-connectDB();
 
 const app = express();
 const server = http.createServer(app);
@@ -50,4 +49,14 @@ app.get('/', (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 
-server.listen(PORT, () => console.log(`Server running on port: http://localhost:${PORT}`));
+const startServer = async () => {
+  await connectDB();
+  startChecklistCleanupJob(io);
+
+  server.listen(PORT, () => console.log(`Server running on port: http://localhost:${PORT}`));
+};
+
+startServer().catch((err) => {
+  console.error('Failed to start server:', err.message);
+  process.exit(1);
+});

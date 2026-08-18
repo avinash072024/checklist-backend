@@ -2,8 +2,44 @@ const Checklist = require('../models/Checklist');
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
 
+const CHECKLIST_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const CHECKLIST_CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
 // Helper to get the io instance from request
 const getIo = (req) => req.app.locals.io;
+
+// Delete checklists older than 30 days (used by scheduled cleanup job)
+exports.deleteExpiredChecklists = async (io) => {
+    const cutoffDate = new Date(Date.now() - CHECKLIST_RETENTION_MS);
+    const expiredLists = await Checklist.find({ createdAt: { $lt: cutoffDate } }).select('_id');
+
+    if (expiredLists.length === 0) {
+        return { deletedCount: 0 };
+    }
+
+    const ids = expiredLists.map((list) => list._id);
+    const result = await Checklist.deleteMany({ _id: { $in: ids } });
+
+    if (io) {
+        ids.forEach((id) => {
+            io.emit('checklist:deleted', { checklistId: id.toString() });
+        });
+    }
+
+    console.log(`[Checklist Cleanup] Deleted ${result.deletedCount} expired checklist(s)`);
+    return { deletedCount: result.deletedCount };
+};
+
+exports.startChecklistCleanupJob = (io) => {
+    const runCleanup = () => {
+        exports.deleteExpiredChecklists(io).catch((err) => {
+            console.error('[Checklist Cleanup] Error:', err.message);
+        });
+    };
+
+    runCleanup();
+    return setInterval(runCleanup, CHECKLIST_CLEANUP_INTERVAL_MS);
+};
 
 // Helper to format user objects with guaranteed fullname
 const formatUser = (user) => {
