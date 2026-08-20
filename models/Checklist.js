@@ -33,6 +33,10 @@ const checklistSchema = new mongoose.Schema({
     ref: 'User',
     default: null
   },
+  frozenAt: {
+    type: Date,
+    default: null
+  },
   isPrivate: {
     type: Boolean,
     default: false
@@ -42,8 +46,8 @@ const checklistSchema = new mongoose.Schema({
 // Index for fast lookups by creator and privacy
 checklistSchema.index({ createdBy: 1, isPrivate: 1 });
 
-// Auto-delete checklists 30 days after createdAt (MongoDB TTL monitor)
+// Auto-delete checklists 30 days after frozenAt (MongoDB TTL monitor)
 const THIRTY_DAYS_IN_SECONDS = 30 * 24 * 60 * 60;
-checklistSchema.index({ createdAt: 1 }, { expireAfterSeconds: THIRTY_DAYS_IN_SECONDS });
+checklistSchema.index({ frozenAt: 1 }, { expireAfterSeconds: THIRTY_DAYS_IN_SECONDS });
 
 module.exports = mongoose.model('Checklist', checklistSchema);

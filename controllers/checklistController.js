@@ -11,7 +11,7 @@ const getIo = (req) => req.app.locals.io;
 // Delete checklists older than 30 days (used by scheduled cleanup job)
 exports.deleteExpiredChecklists = async (io) => {
     const cutoffDate = new Date(Date.now() - CHECKLIST_RETENTION_MS);
-    const expiredLists = await Checklist.find({ createdAt: { $lt: cutoffDate } }).select('_id');
+    const expiredLists = await Checklist.find({ isFreeze: true, frozenAt: { $lt: cutoffDate } }).select('_id');
 
     if (expiredLists.length === 0) {
         return { deletedCount: 0 };
@@ -279,7 +279,16 @@ exports.updateChecklist = async (req, res) => {
         }
 
         if (title !== undefined) checklist.title = title.trim();
-        if (isFreeze !== undefined) checklist.isFreeze = isFreeze;
+        if (isFreeze !== undefined) {
+            checklist.isFreeze = isFreeze;
+            if (isFreeze) {
+                checklist.frozenBy = userId;
+                checklist.frozenAt = new Date();
+            } else {
+                checklist.frozenBy = null;
+                checklist.frozenAt = null;
+            }
+        }
         if (isPrivate !== undefined) checklist.isPrivate = isPrivate;
 
         if (listItems) {
@@ -503,6 +512,7 @@ exports.toggleFreezeChecklist = async (req, res) => {
 
         checklist.isFreeze = isFreeze !== undefined ? isFreeze : !checklist.isFreeze;
         checklist.frozenBy = checklist.isFreeze ? userId : null;
+        checklist.frozenAt = checklist.isFreeze ? new Date() : null;
 
         await checklist.save();
 
