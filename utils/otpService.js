@@ -120,11 +120,65 @@ const sendOTP = async (user, otp, purpose = 'Password Reset') => {
     return { emailSent, smsSent };
 };
 
+const sendChecklistDeletionEmail = async (user, checklist) => {
+    if (!user || !user.email) {
+        return false;
+    }
+
+    const subject = `Checklist Deleted: ${checklist.title}`;
+    const html = `
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 30px; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eaeaea; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <div style="text-align: center; margin-bottom: 25px;">
+                <h2 style="color: #4F46E5; margin: 0; font-size: 28px;">CheckList Pro</h2>
+            </div>
+            
+            <div style="background-color: #FEF2F2; border-left: 4px solid #EF4444; padding: 15px 20px; border-radius: 4px; margin-bottom: 25px;">
+                <h3 style="color: #B91C1C; margin-top: 0; margin-bottom: 10px; font-size: 18px;">Automated Deletion Notice</h3>
+                <p style="margin: 0; color: #7F1D1D; font-size: 15px;">Your checklist has been automatically deleted after reaching its retention period.</p>
+            </div>
+
+            <p style="font-size: 16px;">Hello <strong>${user.firstName || user.fullname || 'there'}</strong>,</p>
+            <p style="font-size: 16px; line-height: 1.5;">This is an automated notification to inform you that your checklist <strong>"${checklist.title}"</strong> has been deleted from our system.</p>
+            
+            <div style="background-color: #F9FAFB; padding: 20px; border-radius: 8px; margin: 25px 0; border: 1px solid #E5E7EB;">
+                <h4 style="margin-top: 0; margin-bottom: 15px; color: #374151; font-size: 16px; border-bottom: 1px solid #E5E7EB; padding-bottom: 10px;">Checklist Details</h4>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 8px 0; color: #6B7280; width: 120px;">Title:</td>
+                        <td style="padding: 8px 0; color: #111827; font-weight: 500;">${checklist.title}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; color: #6B7280;">Completed On:</td>
+                        <td style="padding: 8px 0; color: #111827; font-weight: 500;">${checklist.frozenAt ? new Date(checklist.frozenAt).toLocaleDateString() : 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; color: #6B7280;">Items:</td>
+                        <td style="padding: 8px 0; color: #111827; font-weight: 500;">${checklist.listItems ? checklist.listItems.length : 0}</td>
+                    </tr>
+                </table>
+            </div>
+
+            <p style="color: #6B7280; font-size: 14px; margin-top: 30px; text-align: center;">
+                Checklists are automatically removed 30 days after they are marked as completed to save space and keep your workspace tidy.
+            </p>
+            
+            <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 25px 0;">
+            
+            <p style="color: #9CA3AF; font-size: 12px; text-align: center; margin: 0;">
+                &copy; ${new Date().getFullYear()} CheckList Pro. All rights reserved.
+            </p>
+        </div>
+    `;
+
+    return await sendEmail(user.email, subject, html);
+};
+
 module.exports = {
     generateOTP,
     sendEmail,
     sendOTPEmail,
     sendOTPSMS,
     sendOTP,
-    sendRegistrationSuccessEmail
+    sendRegistrationSuccessEmail,
+    sendChecklistDeletionEmail
 };

@@ -8,16 +8,31 @@ const CHECKLIST_CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 // Helper to get the io instance from request
 const getIo = (req) => req.app.locals.io;
 
+const otpService = require('../utils/otpService');
+
 // Delete checklists older than 30 days (used by scheduled cleanup job)
 exports.deleteExpiredChecklists = async (io) => {
     const cutoffDate = new Date(Date.now() - CHECKLIST_RETENTION_MS);
-    const expiredLists = await Checklist.find({ isFreeze: true, frozenAt: { $lt: cutoffDate } }).select('_id');
+    const expiredLists = await Checklist.find({ isFreeze: true, frozenAt: { $lt: cutoffDate } })
+        .populate('createdBy', 'firstName lastName email fullname');
 
     if (expiredLists.length === 0) {
         return { deletedCount: 0 };
     }
 
     const ids = expiredLists.map((list) => list._id);
+    
+    // Send email to creators before deleting
+    for (const list of expiredLists) {
+        try {
+            if (list.createdBy && list.createdBy.email) {
+                await otpService.sendChecklistDeletionEmail(list.createdBy, list);
+            }
+        } catch (emailError) {
+            console.error(`[Checklist Cleanup] Error sending deletion email for checklist ${list._id}:`, emailError.message);
+        }
+    }
+
     const result = await Checklist.deleteMany({ _id: { $in: ids } });
 
     if (io) {
