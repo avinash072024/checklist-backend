@@ -553,3 +553,62 @@ exports.toggleFreezeChecklist = async (req, res) => {
         res.status(500).json({ success: false, message: err.message });
     }
 };
+
+// Reorder checklist items
+exports.reorderChecklistItems = async (req, res) => {
+    try {
+        const checklistId = req.params.id || req.params.checklistId;
+        const { orderedIds } = req.body;
+        
+        if (!orderedIds || !Array.isArray(orderedIds)) {
+            return res.status(400).json({ success: false, message: 'orderedIds array is required.' });
+        }
+
+        const checklist = await Checklist.findById(checklistId);
+        if (!checklist) {
+            return res.status(404).json({ success: false, message: 'Checklist not found' });
+        }
+
+        if (checklist.isFreeze) {
+            return res.status(400).json({ success: false, message: 'This checklist is completed and cannot be modified.' });
+        }
+
+        // Validate lengths
+        if (orderedIds.length !== checklist.listItems.length) {
+            return res.status(400).json({ success: false, message: 'Mismatch in number of items.' });
+        }
+
+        // Map existing items by ID for quick lookup
+        const itemsMap = new Map();
+        checklist.listItems.forEach(item => {
+            itemsMap.set(item._id.toString(), item);
+        });
+
+        // Construct new list based on orderedIds
+        const newListItems = [];
+        for (const id of orderedIds) {
+            const item = itemsMap.get(id.toString());
+            if (!item) {
+                return res.status(400).json({ success: false, message: `Invalid item ID found: ${id}` });
+            }
+            newListItems.push(item);
+        }
+
+        checklist.listItems = newListItems;
+        await checklist.save();
+
+        const updatedChecklist = await Checklist.findById(checklistId)
+            .populate('listItems.completedBy', 'firstName lastName email fullname')
+            .populate('listItems.createdBy', 'firstName lastName email fullname')
+            .populate('createdBy', 'firstName lastName email fullname')
+            .populate('frozenBy', 'firstName lastName email fullname');
+
+        const formattedData = formatChecklist(updatedChecklist);
+
+        getIo(req).emit('checklist:reordered', { checklistId });
+
+        res.json({ success: true, message: 'Checklist reordered successfully', data: formattedData });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+};

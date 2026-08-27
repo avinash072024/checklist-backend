@@ -28,5 +28,7 @@ router.post('/:id/items', checklistController.addItemToChecklist);
 router.patch('/:checklistId/items/:itemId/complete', checklistController.toggleListItemComplete);
 // Route to freeze/unfreeze a checklist
 router.patch('/:id/freeze', checklistController.toggleFreezeChecklist);
+// Route to reorder checklist items
+router.patch('/:id/reorder', checklistController.reorderChecklistItems);
 
 module.exports = router;
