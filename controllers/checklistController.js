@@ -14,7 +14,10 @@ const otpService = require('../utils/otpService');
 exports.deleteExpiredChecklists = async (io) => {
     const cutoffDate = new Date(Date.now() - CHECKLIST_RETENTION_MS);
     const expiredLists = await Checklist.find({ isFreeze: true, frozenAt: { $lt: cutoffDate } })
-        .populate('createdBy', 'firstName lastName email fullname');
+        .populate('createdBy', 'firstName lastName email fullname')
+        .populate('frozenBy', 'firstName lastName email fullname')
+        .populate('listItems.createdBy', 'firstName lastName email fullname')
+        .populate('listItems.completedBy', 'firstName lastName email fullname');
 
     if (expiredLists.length === 0) {
         return { deletedCount: 0 };

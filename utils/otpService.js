@@ -121,51 +121,97 @@ const sendOTP = async (user, otp, purpose = 'Password Reset') => {
 };
 
 const sendChecklistDeletionEmail = async (user, checklist) => {
-    if (!user || !user.email) {
-        return false;
-    }
+    // if (!user || !user.email) {
+    //     return false;
+    // }
 
     const subject = `Checklist Deleted: ${checklist.title}`;
-    const html = `
-        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 30px; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eaeaea; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
-            <div style="text-align: center; margin-bottom: 25px;">
-                <h2 style="color: #4F46E5; margin: 0; font-size: 28px;">CheckList Pro</h2>
-            </div>
+    
+    // Format dates
+    const createdDate = checklist.createdAt ? new Date(checklist.createdAt).toLocaleDateString() : 'N/A';
+    const frozenDate = checklist.frozenAt ? new Date(checklist.frozenAt).toLocaleDateString() : 'N/A';
+    const frozenBy = checklist.frozenBy ? (checklist.frozenBy.fullname || checklist.frozenBy.firstName) : 'System';
+
+    // Generate Items HTML
+    let itemsHtml = '';
+    if (checklist.listItems && checklist.listItems.length > 0) {
+        itemsHtml = `
+            <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+                <thead>
+                    <tr style="background-color: #F3F4F6; border-bottom: 2px solid #E5E7EB; text-align: left;">
+                        <th style="padding: 10px; color: #374151; font-size: 14px; font-weight: 600;">Item Name</th>
+                        <th style="padding: 10px; color: #374151; font-size: 14px; font-weight: 600;">Created By</th>
+                        <th style="padding: 10px; color: #374151; font-size: 14px; font-weight: 600;">Completed By</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        checklist.listItems.forEach((item, index) => {
+            const rowColor = index % 2 === 0 ? '#FFFFFF' : '#F9FAFB';
+            const createdByName = item.createdBy ? (item.createdBy.fullname || item.createdBy.firstName) : 'Unknown';
+            const completedByName = item.completedBy ? (item.completedBy.fullname || item.completedBy.firstName) : (item.completed ? 'System' : 'Pending');
             
-            <div style="background-color: #FEF2F2; border-left: 4px solid #EF4444; padding: 15px 20px; border-radius: 4px; margin-bottom: 25px;">
-                <h3 style="color: #B91C1C; margin-top: 0; margin-bottom: 10px; font-size: 18px;">Automated Deletion Notice</h3>
-                <p style="margin: 0; color: #7F1D1D; font-size: 15px;">Your checklist has been automatically deleted after reaching its retention period.</p>
+            itemsHtml += `
+                <tr style="background-color: ${rowColor}; border-bottom: 1px solid #E5E7EB;">
+                    <td style="padding: 10px; color: #111827; font-size: 14px;">${item.text}</td>
+                    <td style="padding: 10px; color: #6B7280; font-size: 14px;">${createdByName}</td>
+                    <td style="padding: 10px; color: #6B7280; font-size: 14px;">${completedByName}</td>
+                </tr>
+            `;
+        });
+        itemsHtml += `
+                </tbody>
+            </table>
+        `;
+    } else {
+        itemsHtml = `<p style="color: #6B7280; font-size: 14px;">No items found in this checklist.</p>`;
+    }
+
+    const html = `
+        <div style="font-family: Calibri, sans-serif; padding: 20px; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px;">
+            <h2 style="color: #4F46E5; text-align: center;">CheckList App</h2>
+            
+            <div style="background-color: #FEF2F2; border-left: 4px solid #EF4444; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
+                <h3 style="color: #B91C1C; margin: 0 0 5px 0; font-size: 18px;">Automated Deletion Notice</h3>
+                <p style="margin: 0; color: #7F1D1D; font-size: 14px;">Your checklist has been automatically deleted after reaching its retention period.</p>
             </div>
 
-            <p style="font-size: 16px;">Hello <strong>${user.firstName || user.fullname || 'there'}</strong>,</p>
-            <p style="font-size: 16px; line-height: 1.5;">This is an automated notification to inform you that your checklist <strong>"${checklist.title}"</strong> has been deleted from our system.</p>
+            <p>Hello <strong>${user.firstName || user.fullname || 'there'}</strong>,</p>
+            <p>This is an automated notification to inform you that your checklist <strong>"${checklist.title}"</strong> has been deleted from our system.</p>
             
             <div style="background-color: #F9FAFB; padding: 20px; border-radius: 8px; margin: 25px 0; border: 1px solid #E5E7EB;">
-                <h4 style="margin-top: 0; margin-bottom: 15px; color: #374151; font-size: 16px; border-bottom: 1px solid #E5E7EB; padding-bottom: 10px;">Checklist Details</h4>
+                <h4 style="margin: 0 0 15px 0; color: #374151; font-size: 16px; border-bottom: 1px solid #E5E7EB; padding-bottom: 10px;">Checklist Summary</h4>
                 <table style="width: 100%; border-collapse: collapse;">
                     <tr>
-                        <td style="padding: 8px 0; color: #6B7280; width: 120px;">Title:</td>
-                        <td style="padding: 8px 0; color: #111827; font-weight: 500;">${checklist.title}</td>
+                        <td style="padding: 6px 0; color: #6B7280; width: 130px; font-size: 14px;">Title:</td>
+                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${checklist.title}</td>
                     </tr>
                     <tr>
-                        <td style="padding: 8px 0; color: #6B7280;">Completed On:</td>
-                        <td style="padding: 8px 0; color: #111827; font-weight: 500;">${checklist.frozenAt ? new Date(checklist.frozenAt).toLocaleDateString() : 'N/A'}</td>
+                        <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Created Date:</td>
+                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${createdDate}</td>
                     </tr>
                     <tr>
-                        <td style="padding: 8px 0; color: #6B7280;">Items:</td>
-                        <td style="padding: 8px 0; color: #111827; font-weight: 500;">${checklist.listItems ? checklist.listItems.length : 0}</td>
+                        <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Frozen Date:</td>
+                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${frozenDate}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Frozen By:</td>
+                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${frozenBy}</td>
                     </tr>
                 </table>
+
+                <h4 style="margin: 25px 0 10px 0; color: #374151; font-size: 16px;">Checklist Items</h4>
+                ${itemsHtml}
             </div>
 
-            <p style="color: #6B7280; font-size: 14px; margin-top: 30px; text-align: center;">
+            <p style="color: #6B7280; font-size: 14px; text-align: center;">
                 Checklists are automatically removed 30 days after they are marked as completed to save space and keep your workspace tidy.
             </p>
             
-            <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 25px 0;">
+            <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 20px 0;">
             
             <p style="color: #9CA3AF; font-size: 12px; text-align: center; margin: 0;">
-                &copy; ${new Date().getFullYear()} CheckList Pro. All rights reserved.
+                &copy; ${new Date().getFullYear()} CheckList App. All rights reserved.
             </p>
         </div>
     `;
