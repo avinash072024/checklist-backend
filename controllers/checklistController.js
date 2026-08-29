@@ -24,12 +24,20 @@ exports.deleteExpiredChecklists = async (io) => {
     }
 
     const ids = expiredLists.map((list) => list._id);
-    
+
     // Send email to creators before deleting
     for (const list of expiredLists) {
         try {
-            if (list.createdBy && list.createdBy.email) {
-                await otpService.sendChecklistDeletionEmail(list.createdBy, list);
+            const creator = list.createdBy;
+            if (creator && typeof creator === 'object' && creator.email) {
+                const emailResult = await otpService.sendChecklistDeletionEmail(creator, list);
+                if (emailResult) {
+                    console.log(`[Checklist Cleanup] Deletion email successfully sent to ${creator.email} for checklist ${list._id}`);
+                } else {
+                    console.warn(`[Checklist Cleanup] Email service returned false when sending deletion email for checklist ${list._id}`);
+                }
+            } else {
+                console.warn(`[Checklist Cleanup] Skipped deletion email for checklist ${list._id}: Creator email missing or not populated.`);
             }
         } catch (emailError) {
             console.error(`[Checklist Cleanup] Error sending deletion email for checklist ${list._id}:`, emailError.message);
@@ -97,13 +105,9 @@ exports.getDashboardStats = async (req, res) => {
     try {
         const userId = req.user.userId || req.user.id;
         const [total, mine, others, privateLists] = await Promise.all([
-            // Total public checklists in the system (excludes all private lists)
             Checklist.countDocuments({ isPrivate: { $ne: true } }),
-            // Total public lists created by the user
             Checklist.countDocuments({ createdBy: userId, isPrivate: { $ne: true } }),
-            // Other users' public checklists
             Checklist.countDocuments({ createdBy: { $ne: userId }, isPrivate: { $ne: true } }),
-            // Private checklists created by the authenticated user
             Checklist.countDocuments({ createdBy: userId, isPrivate: true })
         ]);
 
@@ -125,7 +129,6 @@ exports.getDashboardStats = async (req, res) => {
 exports.getMyChecklists = async (req, res) => {
     try {
         const userId = req.user.userId || req.user.id;
-        // const lists = await Checklist.find({ createdBy: userId })
         const lists = await Checklist.find({ createdBy: userId, isPrivate: false })
             .sort({ createdAt: -1 })
             .populate('createdBy', 'firstName lastName email fullname')
@@ -208,7 +211,6 @@ exports.getChecklistById = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Checklist not found' });
         }
 
-        // Prevent unauthorized access to private checklists created by others
         if (checklist.isPrivate && checklist.createdBy._id.toString() !== userId.toString()) {
             return res.status(403).json({ success: false, message: 'Access denied to private checklist' });
         }
@@ -271,7 +273,6 @@ exports.createChecklist = async (req, res) => {
 
         const formattedData = formatChecklist(populatedList);
 
-        // Notify all connected clients (Socket.io room filtering can be applied if needed, otherwise standard broadcast)
         getIo(req).emit('checklist:created', { checklistId: newList._id });
 
         res.status(201).json({ success: true, message: 'List created successfully', data: formattedData });
@@ -559,7 +560,7 @@ exports.reorderChecklistItems = async (req, res) => {
     try {
         const checklistId = req.params.id || req.params.checklistId;
         const { orderedIds } = req.body;
-        
+
         if (!orderedIds || !Array.isArray(orderedIds)) {
             return res.status(400).json({ success: false, message: 'orderedIds array is required.' });
         }
@@ -573,18 +574,15 @@ exports.reorderChecklistItems = async (req, res) => {
             return res.status(400).json({ success: false, message: 'This checklist is completed and cannot be modified.' });
         }
 
-        // Validate lengths
         if (orderedIds.length !== checklist.listItems.length) {
             return res.status(400).json({ success: false, message: 'Mismatch in number of items.' });
         }
 
-        // Map existing items by ID for quick lookup
         const itemsMap = new Map();
         checklist.listItems.forEach(item => {
             itemsMap.set(item._id.toString(), item);
         });
 
-        // Construct new list based on orderedIds
         const newListItems = [];
         for (const id of orderedIds) {
             const item = itemsMap.get(id.toString());

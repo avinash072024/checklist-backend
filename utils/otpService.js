@@ -1,8 +1,5 @@
 const nodemailer = require('nodemailer');
 
-/**
- * Generate a 6-digit numerical OTP
- */
 const generateOTP = () => {
     return Math.floor(100000 + Math.random() * 900000).toString();
 };
@@ -50,9 +47,6 @@ const sendEmail = async (to, subject, html) => {
     return true;
 };
 
-/**
- * Send OTP via Email using Nodemailer (with console fallback if SMTP is not configured)
- */
 const sendOTPEmail = async (email, otp, purpose = 'Password Reset', firstName = '') => {
     const subject = `${purpose} Verification Code`;
     const greetingName = firstName ? ` ${firstName}` : '';
@@ -102,18 +96,10 @@ const sendRegistrationSuccessEmail = async (user, password) => {
     return await sendEmail(user.email, subject, html);
 };
 
-/**
- * Send OTP via SMS (Logs to console for dev/testing, ready for Twilio/SMS API)
- */
 const sendOTPSMS = async (mobileNumber, otp, purpose = 'Password Reset') => {
-    // In production, integrate Twilio, Fast2SMS, MSG91, or your SMS provider here
-    // console.log(`[OTP SMS Log] Mobile: ${mobileNumber} | Purpose: ${purpose} | OTP: ${otp}`);
     return true;
 };
 
-/**
- * Dispatch OTP via registered Email and Mobile
- */
 const sendOTP = async (user, otp, purpose = 'Password Reset') => {
     const emailSent = user.email ? await sendOTPEmail(user.email, otp, purpose, user.firstName) : false;
     const smsSent = user.mobileNumber ? await sendOTPSMS(user.mobileNumber, otp, purpose) : false;
@@ -121,18 +107,18 @@ const sendOTP = async (user, otp, purpose = 'Password Reset') => {
 };
 
 const sendChecklistDeletionEmail = async (user, checklist) => {
-    // if (!user || !user.email) {
-    //     return false;
-    // }
+    const recipientEmail = user?.email || (typeof user === 'object' && user._doc?.email);
+    if (!recipientEmail) {
+        console.warn(`[Email Service] Cannot send checklist deletion email: recipient email is missing.`);
+        return false;
+    }
 
     const subject = `Checklist Deleted: ${checklist.title}`;
-    
-    // Format dates
+
     const createdDate = checklist.createdAt ? new Date(checklist.createdAt).toLocaleDateString() : 'N/A';
     const frozenDate = checklist.frozenAt ? new Date(checklist.frozenAt).toLocaleDateString() : 'N/A';
-    const frozenBy = checklist.frozenBy ? (checklist.frozenBy.fullname || checklist.frozenBy.firstName) : 'System';
+    const frozenBy = checklist.frozenBy ? (checklist.frozenBy.fullname || checklist.frozenBy.firstName || 'System') : 'System';
 
-    // Generate Items HTML
     let itemsHtml = '';
     if (checklist.listItems && checklist.listItems.length > 0) {
         itemsHtml = `
@@ -148,9 +134,9 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
         `;
         checklist.listItems.forEach((item, index) => {
             const rowColor = index % 2 === 0 ? '#FFFFFF' : '#F9FAFB';
-            const createdByName = item.createdBy ? (item.createdBy.fullname || item.createdBy.firstName) : 'Unknown';
-            const completedByName = item.completedBy ? (item.completedBy.fullname || item.completedBy.firstName) : (item.completed ? 'System' : 'Pending');
-            
+            const createdByName = item.createdBy ? (item.createdBy.fullname || item.createdBy.firstName || 'Unknown') : 'Unknown';
+            const completedByName = item.completedBy ? (item.completedBy.fullname || item.completedBy.firstName || 'System') : (item.completed ? 'System' : 'Pending');
+
             itemsHtml += `
                 <tr style="background-color: ${rowColor}; border-bottom: 1px solid #E5E7EB;">
                     <td style="padding: 10px; color: #111827; font-size: 14px;">${item.text}</td>
@@ -167,6 +153,8 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
         itemsHtml = `<p style="color: #6B7280; font-size: 14px;">No items found in this checklist.</p>`;
     }
 
+    const firstName = user.firstName || user.fullname || 'there';
+
     const html = `
         <div style="font-family: Calibri, sans-serif; padding: 20px; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px;">
             <h2 style="color: #4F46E5; text-align: center;">CheckList App</h2>
@@ -176,7 +164,7 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
                 <p style="margin: 0; color: #7F1D1D; font-size: 14px;">Your checklist has been automatically deleted after reaching its retention period.</p>
             </div>
 
-            <p>Hello <strong>${user.firstName || user.fullname || 'there'}</strong>,</p>
+            <p>Hello <strong>${firstName}</strong>,</p>
             <p>This is an automated notification to inform you that your checklist <strong>"${checklist.title}"</strong> has been deleted from our system.</p>
             
             <div style="background-color: #F9FAFB; padding: 20px; border-radius: 8px; margin: 25px 0; border: 1px solid #E5E7EB;">
@@ -216,7 +204,7 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
         </div>
     `;
 
-    return await sendEmail(user.email, subject, html);
+    return await sendEmail(recipientEmail, subject, html);
 };
 
 module.exports = {
