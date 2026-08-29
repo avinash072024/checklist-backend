@@ -13,6 +13,9 @@ router.get('/all', checklistController.getAllChecklists);
 router.get('/my-lists', checklistController.getMyChecklists);
 router.get('/other-lists', checklistController.getOtherChecklists);
 router.get('/my-private-lists', checklistController.getMyPrivateChecklists);
+// test mail automation
+router.get('/test-deletion-email', checklistController.testDeletionEmail);
+// test mail automation
 router.post('/', checklistController.createChecklist);
 
 // Specific list / item routes

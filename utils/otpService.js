@@ -122,32 +122,54 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
     let itemsHtml = '';
     if (checklist.listItems && checklist.listItems.length > 0) {
         itemsHtml = `
-            <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
-                <thead>
-                    <tr style="background-color: #F3F4F6; border-bottom: 2px solid #E5E7EB; text-align: left;">
-                        <th style="padding: 10px; color: #374151; font-size: 14px; font-weight: 600;">Item Name</th>
-                        <th style="padding: 10px; color: #374151; font-size: 14px; font-weight: 600;">Created By</th>
-                        <th style="padding: 10px; color: #374151; font-size: 14px; font-weight: 600;">Completed By</th>
-                    </tr>
-                </thead>
-                <tbody>
+            <style>
+                @media (prefers-color-scheme: dark) {
+                    .email-wrapper { background-color: #111827 !important; }
+                    .email-table { background-color: #111827 !important; border-color: #374151 !important; }
+                    .email-th { background-color: #1F2937 !important; color: #F9FAFB !important; border-color: #374151 !important; }
+                    .email-th th { border-color: #374151 !important; color: #F9FAFB !important; }
+                    .email-tr-even { background-color: #1F2937 !important; border-bottom: 1px solid #374151 !important; }
+                    .email-tr-odd { background-color: #111827 !important; border-bottom: 1px solid #374151 !important; }
+                    .email-td { border-color: #374151 !important; }
+                    .email-td-text { color: #F3F4F6 !important; }
+                    .email-td-sub { color: #9CA3AF !important; }
+                    .email-td-completed { color: #9CA3AF !important; }
+                    .email-td-pending { color: #F87171 !important; }
+                }
+            </style>
+            <div class="email-wrapper" style="width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; margin-top: 15px;">
+                <table class="email-table" style="width: 100%; min-width: 320px; table-layout: fixed; border-collapse: collapse; background-color: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 6px; overflow: hidden;">
+                    <thead>
+                        <tr class="email-th" style="background-color: #F3F4F6; border-bottom: 2px solid #E5E7EB; text-align: left;">
+                            <th style="width: 40%; padding: 10px; color: #374151; font-size: 13px; font-weight: 600; border-right: 1px solid #E5E7EB;">Item&nbsp;Name</th>
+                            <th style="width: 30%; padding: 10px; color: #374151; font-size: 13px; font-weight: 600; border-right: 1px solid #E5E7EB;">Created&nbsp;By</th>
+                            <th style="width: 30%; padding: 10px; color: #374151; font-size: 13px; font-weight: 600;">Completed&nbsp;By</th>
+                        </tr>
+                    </thead>
+                    <tbody>
         `;
         checklist.listItems.forEach((item, index) => {
+            const rowClass = index % 2 === 0 ? 'email-tr-even' : 'email-tr-odd';
             const rowColor = index % 2 === 0 ? '#FFFFFF' : '#F9FAFB';
             const createdByName = item.createdBy ? (item.createdBy.fullname || item.createdBy.firstName || 'Unknown') : 'Unknown';
             const completedByName = item.completedBy ? (item.completedBy.fullname || item.completedBy.firstName || 'System') : (item.completed ? 'System' : 'Pending');
 
+            const isPending = completedByName === 'Pending';
+            const completedClass = isPending ? 'email-td-pending' : 'email-td-completed';
+            const completedColor = isPending ? '#EF4444' : '#6B7280';
+
             itemsHtml += `
-                <tr style="background-color: ${rowColor}; border-bottom: 1px solid #E5E7EB;">
-                    <td style="padding: 10px; color: #111827; font-size: 14px;">${item.text}</td>
-                    <td style="padding: 10px; color: #6B7280; font-size: 14px;">${createdByName}</td>
-                    <td style="padding: 10px; color: #6B7280; font-size: 14px;">${completedByName}</td>
+                <tr class="${rowClass}" style="background-color: ${rowColor}; border-bottom: 1px solid #E5E7EB;">
+                    <td class="email-td email-td-text" style="width: 40%; padding: 10px; color: #111827; font-size: 13px; word-break: break-word; overflow-wrap: break-word; border-right: 1px solid #E5E7EB;">${item.text}</td>
+                    <td class="email-td email-td-sub" style="width: 30%; padding: 10px; color: #6B7280; font-size: 13px; word-break: break-word; overflow-wrap: break-word; border-right: 1px solid #E5E7EB;">${createdByName}</td>
+                    <td class="email-td ${completedClass}" style="width: 30%; padding: 10px; color: ${completedColor}; font-size: 13px; word-break: break-word; overflow-wrap: break-word;">${completedByName}</td>
                 </tr>
             `;
         });
         itemsHtml += `
-                </tbody>
-            </table>
+                    </tbody>
+                </table>
+            </div>
         `;
     } else {
         itemsHtml = `<p style="color: #6B7280; font-size: 14px;">No items found in this checklist.</p>`;
@@ -156,7 +178,7 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
     const firstName = user.firstName || user.fullname || 'there';
 
     const html = `
-        <div style="font-family: Calibri, sans-serif; padding: 20px; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px;">
+        <div style="font-family: Calibri, sans-serif; padding: 10px; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px;">
             <h2 style="color: #4F46E5; text-align: center;">CheckList App</h2>
             
             <div style="background-color: #FEF2F2; border-left: 4px solid #EF4444; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
@@ -167,24 +189,20 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
             <p>Hello <strong>${firstName}</strong>,</p>
             <p>This is an automated notification to inform you that your checklist <strong>"${checklist.title}"</strong> has been deleted from our system.</p>
             
-            <div style="background-color: #F9FAFB; padding: 20px; border-radius: 8px; margin: 25px 0; border: 1px solid #E5E7EB;">
+            <div style="background-color: #F9FAFB; padding: 10px; border-radius: 8px; margin: 25px 0; border: 1px solid #E5E7EB;">
                 <h4 style="margin: 0 0 15px 0; color: #374151; font-size: 16px; border-bottom: 1px solid #E5E7EB; padding-bottom: 10px;">Checklist Summary</h4>
                 <table style="width: 100%; border-collapse: collapse;">
                     <tr>
                         <td style="padding: 6px 0; color: #6B7280; width: 130px; font-size: 14px;">Title:</td>
-                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${checklist.title}</td>
+                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${checklist.title}${checklist.isPrivate ? ' (Private)' : ''}</td>
                     </tr>
                     <tr>
                         <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Created Date:</td>
                         <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${createdDate}</td>
                     </tr>
                     <tr>
-                        <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Frozen Date:</td>
+                        <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Completed Date:</td>
                         <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${frozenDate}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Frozen By:</td>
-                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${frozenBy}</td>
                     </tr>
                 </table>
 
