@@ -18,6 +18,9 @@ const sendEmail = async (to, subject, html) => {
     const { smtpHost, smtpPort, smtpUser, smtpPass, fromEmail } = getSmtpConfig();
 
     if (smtpHost && smtpUser && smtpPass) {
+        // Strip any surrounding quotes that dotenv may include on Windows
+        const sanitizedFrom = fromEmail.replace(/^"|"$/g, '').trim();
+
         try {
             const transporter = nodemailer.createTransport({
                 host: smtpHost,
@@ -26,19 +29,27 @@ const sendEmail = async (to, subject, html) => {
                 auth: {
                     user: smtpUser,
                     pass: smtpPass
+                },
+                tls: {
+                    rejectUnauthorized: false
                 }
             });
 
+            // Verify SMTP connection/auth before sending
+            await transporter.verify();
+
             await transporter.sendMail({
-                from: fromEmail,
+                from: sanitizedFrom,
                 to,
                 subject,
                 html
             });
 
+            console.log(`[Email Service] Email sent successfully to ${to}`);
             return true;
         } catch (error) {
-            console.error(`[Email Service Error] Failed to send email to ${to}:`, error.message);
+            console.error(`[Email Service Error] Failed to send email to ${to}:`, error.message || error);
+            console.error(`[Email Service Error] SMTP Config — Host: ${smtpHost}, Port: ${smtpPort}, User: ${smtpUser}`);
             return false;
         }
     }
@@ -113,7 +124,12 @@ const getUserName = (userRef, fallback = 'Unknown') => {
     const u = typeof userRef.toObject === 'function'
         ? userRef.toObject({ virtuals: true })
         : userRef;
-    return u.fullname || `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email || fallback;
+    // Resolve fullname: virtual field (if present), or concatenate first+last, or email
+    const fullname = u.fullname
+        || `${u.firstName || ''} ${u.lastName || ''}`.trim()
+        || u.email
+        || fallback;
+    return fullname || fallback;
 };
 
 const sendChecklistDeletionEmail = async (user, checklist) => {
@@ -128,9 +144,24 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
         return false;
     }
 
-    // Convert the checklist Mongoose document to a plain object with virtuals resolved.
-    // This ensures that virtual fields (e.g. 'fullname') on populated User sub-documents
-    // are accessible when building the email HTML.
+    // Resolve names from the ORIGINAL Mongoose-populated docs BEFORE calling toObject(),
+    // because nested populated docs inside array subdocuments (listItems.createdBy / completedBy)
+    // may not carry the 'fullname' virtual after serialization in all Mongoose versions.
+    const frozenByName = getUserName(checklist.frozenBy, 'System');
+
+    // Pre-resolve each list-item's user display names while still Mongoose documents
+    const resolvedItems = Array.isArray(checklist.listItems)
+        ? checklist.listItems.map(item => ({
+            text: item.text,
+            completed: item.completed,
+            createdByName: getUserName(item.createdBy, 'Unknown'),
+            completedByName: item.completedBy
+                ? getUserName(item.completedBy, 'System')
+                : (item.completed ? 'System' : 'Pending')
+        }))
+        : [];
+
+    // Now safely convert to a plain object for metadata fields
     const checklistData = typeof checklist.toObject === 'function'
         ? checklist.toObject({ virtuals: true })
         : checklist;
@@ -143,10 +174,9 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
     const frozenDate = checklistData.frozenAt
         ? new Date(checklistData.frozenAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
         : 'N/A';
-    const frozenByName = getUserName(checklistData.frozenBy, 'System');
 
     let itemsHtml = '';
-    if (checklistData.listItems && checklistData.listItems.length > 0) {
+    if (resolvedItems.length > 0) {
         itemsHtml = `
             <style>
                 @media (prefers-color-scheme: dark) {
@@ -174,14 +204,11 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
                     </thead>
                     <tbody>
         `;
-        checklistData.listItems.forEach((item, index) => {
+        resolvedItems.forEach((item, index) => {
             const rowColor = index % 2 === 0 ? '#FFFFFF' : '#F9FAFB';
             const rowClass = index % 2 === 0 ? 'email-tr-even' : 'email-tr-odd';
 
-            const createdByName = getUserName(item.createdBy, 'Unknown');
-            const completedByName = item.completedBy
-                ? getUserName(item.completedBy, 'System')
-                : (item.completed ? 'System' : 'Pending');
+            const { createdByName, completedByName } = item;
 
             const isPending = completedByName === 'Pending';
             const completedClass = isPending ? 'email-td-pending' : 'email-td-completed';

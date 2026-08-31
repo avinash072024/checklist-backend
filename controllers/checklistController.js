@@ -688,24 +688,27 @@ exports.deleteExpiredChecklists = async (io) => {
         return { deletedCount: 0 };
     }
 
+    console.log(`[Checklist Cleanup] Found ${expiredLists.length} expired checklist(s) to process.`);
+
     const ids = expiredLists.map((list) => list._id);
 
-    // Send email to creators before deleting[cite: 3]
+    // Send email to creators before deleting
     for (const list of expiredLists) {
         try {
             const creator = list.createdBy;
+            console.log(`[Checklist Cleanup] Processing checklist "${list.title}" (ID: ${list._id}), creator:`, creator ? creator.email : 'N/A');
             if (creator && typeof creator === 'object' && creator.email) {
                 const emailResult = await otpService.sendChecklistDeletionEmail(creator, list);
                 if (emailResult) {
-                    console.log(`[Checklist Cleanup] Deletion email successfully sent to ${creator.email} for checklist ${list._id}`);
+                    console.log(`[Checklist Cleanup] Deletion email successfully sent to ${creator.email} for checklist "${list.title}"`);
                 } else {
-                    console.warn(`[Checklist Cleanup] Email service returned false when sending deletion email for checklist ${list._id}`);
+                    console.warn(`[Checklist Cleanup] Email service returned false when sending deletion email for checklist "${list.title}" (${list._id})`);
                 }
             } else {
-                console.warn(`[Checklist Cleanup] Skipped deletion email for checklist ${list._id}: Creator email missing or not populated.`);
+                console.warn(`[Checklist Cleanup] Skipped deletion email for checklist "${list.title}" (${list._id}): Creator email missing or not populated.`);
             }
         } catch (emailError) {
-            console.error(`[Checklist Cleanup] Error sending deletion email for checklist ${list._id}:`, emailError.message);
+            console.error(`[Checklist Cleanup] Error sending deletion email for checklist ${list._id}:`, emailError.message || emailError);
         }
     }
 
