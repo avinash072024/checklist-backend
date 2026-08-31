@@ -1276,34 +1276,3 @@ exports.reorderChecklistItems = async (req, res) => {
         res.status(500).json({ success: false, message: err.message });
     }
 };
-
-// Test endpoint for checklist deletion email template
-exports.testDeletionEmail = async (req, res) => {
-    try {
-        const userId = req.user.userId || req.user.id;
-        const checklist = await Checklist.findOne({ createdBy: userId })
-            .populate('createdBy', 'firstName lastName email fullname')
-            .populate('frozenBy', 'firstName lastName email fullname')
-            .populate('listItems.createdBy', 'firstName lastName email fullname')
-            .populate('listItems.completedBy', 'firstName lastName email fullname');
-
-        if (!checklist) {
-            return res.status(404).json({ success: false, message: 'Please create at least one checklist first.' });
-        }
-
-        const creator = checklist.createdBy;
-        if (!creator || !creator.email) {
-            return res.status(400).json({ success: false, message: 'Creator email is missing.' });
-        }
-
-        const emailSent = await otpService.sendChecklistDeletionEmail(creator, checklist);
-
-        if (emailSent) {
-            res.json({ success: true, message: `Test deletion email successfully sent to ${creator.email}` });
-        } else {
-            res.status(500).json({ success: false, message: 'Failed to send test email. Check server console logs.' });
-        }
-    } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
-    }
-};

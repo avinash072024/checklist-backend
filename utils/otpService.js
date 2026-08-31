@@ -106,21 +106,47 @@ const sendOTP = async (user, otp, purpose = 'Password Reset') => {
     return { emailSent, smsSent };
 };
 
+// Helper to safely extract a display name from a user object or Mongoose document
+const getUserName = (userRef, fallback = 'Unknown') => {
+    if (!userRef) return fallback;
+    // If it's a Mongoose document, convert to plain object with virtuals
+    const u = typeof userRef.toObject === 'function'
+        ? userRef.toObject({ virtuals: true })
+        : userRef;
+    return u.fullname || `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email || fallback;
+};
+
 const sendChecklistDeletionEmail = async (user, checklist) => {
-    const recipientEmail = user?.email || (typeof user === 'object' && user._doc?.email);
+    // Resolve recipient email — handle both Mongoose doc and plain object
+    const recipientEmail = (typeof user.toObject === 'function'
+        ? user.toObject({ virtuals: true })
+        : user
+    )?.email;
+
     if (!recipientEmail) {
         console.warn(`[Email Service] Cannot send checklist deletion email: recipient email is missing.`);
         return false;
     }
 
-    const subject = `Checklist Deleted: ${checklist.title}`;
+    // Convert the checklist Mongoose document to a plain object with virtuals resolved.
+    // This ensures that virtual fields (e.g. 'fullname') on populated User sub-documents
+    // are accessible when building the email HTML.
+    const checklistData = typeof checklist.toObject === 'function'
+        ? checklist.toObject({ virtuals: true })
+        : checklist;
 
-    const createdDate = checklist.createdAt ? new Date(checklist.createdAt).toLocaleDateString() : 'N/A';
-    const frozenDate = checklist.frozenAt ? new Date(checklist.frozenAt).toLocaleDateString() : 'N/A';
-    const frozenBy = checklist.frozenBy ? (checklist.frozenBy.fullname || checklist.frozenBy.firstName || 'System') : 'System';
+    const subject = `Checklist Deleted: ${checklistData.title}`;
+
+    const createdDate = checklistData.createdAt
+        ? new Date(checklistData.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+        : 'N/A';
+    const frozenDate = checklistData.frozenAt
+        ? new Date(checklistData.frozenAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+        : 'N/A';
+    const frozenByName = getUserName(checklistData.frozenBy, 'System');
 
     let itemsHtml = '';
-    if (checklist.listItems && checklist.listItems.length > 0) {
+    if (checklistData.listItems && checklistData.listItems.length > 0) {
         itemsHtml = `
             <style>
                 @media (prefers-color-scheme: dark) {
@@ -148,11 +174,14 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
                     </thead>
                     <tbody>
         `;
-        checklist.listItems.forEach((item, index) => {
-            const rowClass = index % 2 === 0 ? 'email-tr-even' : 'email-tr-odd';
+        checklistData.listItems.forEach((item, index) => {
             const rowColor = index % 2 === 0 ? '#FFFFFF' : '#F9FAFB';
-            const createdByName = item.createdBy ? (item.createdBy.fullname || item.createdBy.firstName || 'Unknown') : 'Unknown';
-            const completedByName = item.completedBy ? (item.completedBy.fullname || item.completedBy.firstName || 'System') : (item.completed ? 'System' : 'Pending');
+            const rowClass = index % 2 === 0 ? 'email-tr-even' : 'email-tr-odd';
+
+            const createdByName = getUserName(item.createdBy, 'Unknown');
+            const completedByName = item.completedBy
+                ? getUserName(item.completedBy, 'System')
+                : (item.completed ? 'System' : 'Pending');
 
             const isPending = completedByName === 'Pending';
             const completedClass = isPending ? 'email-td-pending' : 'email-td-completed';
@@ -175,7 +204,7 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
         itemsHtml = `<p style="color: #6B7280; font-size: 14px;">No items found in this checklist.</p>`;
     }
 
-    const firstName = user.firstName || user.fullname || 'there';
+    const firstName = getUserName(user, 'there').split(' ')[0];
 
     const html = `
         <div style="font-family: Calibri, sans-serif; padding: 10px; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px;">
@@ -183,18 +212,18 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
             
             <div style="background-color: #FEF2F2; border-left: 4px solid #EF4444; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
                 <h3 style="color: #B91C1C; margin: 0 0 5px 0; font-size: 18px;">Automated Deletion Notice</h3>
-                <p style="margin: 0; color: #7F1D1D; font-size: 14px;">Your checklist has been automatically deleted after reaching its retention period.</p>
+                <p style="margin: 0; color: #7F1D1D; font-size: 14px;">Your checklist has been automatically deleted after reaching its 30-day retention period.</p>
             </div>
 
             <p>Hello <strong>${firstName}</strong>,</p>
-            <p>This is an automated notification to inform you that your checklist <strong>"${checklist.title}"</strong> has been deleted from our system.</p>
+            <p>This is an automated notification to inform you that your checklist <strong>"${checklistData.title}"</strong> has been permanently deleted from our system.</p>
             
             <div style="background-color: #F9FAFB; padding: 10px; border-radius: 8px; margin: 25px 0; border: 1px solid #E5E7EB;">
                 <h4 style="margin: 0 0 15px 0; color: #374151; font-size: 16px; border-bottom: 1px solid #E5E7EB; padding-bottom: 10px;">Checklist Summary</h4>
                 <table style="width: 100%; border-collapse: collapse;">
                     <tr>
-                        <td style="padding: 6px 0; color: #6B7280; width: 130px; font-size: 14px;">Title:</td>
-                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${checklist.title}${checklist.isPrivate ? ' (Private)' : ''}</td>
+                        <td style="padding: 6px 0; color: #6B7280; width: 140px; font-size: 14px;">Title:</td>
+                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${checklistData.title}${checklistData.isPrivate ? ' (Private)' : ''}</td>
                     </tr>
                     <tr>
                         <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Created Date:</td>
@@ -204,6 +233,10 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
                         <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Completed Date:</td>
                         <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${frozenDate}</td>
                     </tr>
+                    <tr>
+                        <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Completed By:</td>
+                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${frozenByName}</td>
+                    </tr>
                 </table>
 
                 <h4 style="margin: 25px 0 10px 0; color: #374151; font-size: 16px;">Checklist Items</h4>
@@ -211,7 +244,7 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
             </div>
 
             <p style="color: #6B7280; font-size: 14px; text-align: center;">
-                Checklists are automatically removed 30 days after they are marked as completed to save space and keep your workspace tidy.
+                Checklists are automatically removed 30 days after they are marked as completed to keep your workspace tidy.
             </p>
             
             <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 20px 0;">
