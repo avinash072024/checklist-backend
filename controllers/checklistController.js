@@ -659,6 +659,7 @@
 
 
 const Checklist = require('../models/Checklist');
+const User = require('../models/User');
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
 
@@ -673,16 +674,18 @@ const otpService = require('../utils/otpService');
 // Delete checklists older than 30 days (used by scheduled cleanup job)
 exports.deleteExpiredChecklists = async (io) => {
     const cutoffDate = new Date(Date.now() - CHECKLIST_RETENTION_MS);
-    
-    // Find expired checklists that are frozen and passed their retention window[cite: 3]
-    const expiredLists = await Checklist.find({ 
-        isFreeze: true, 
-        frozenAt: { $exists: true, $ne: null, $lt: cutoffDate } 
+
+    // NOTE: 'fullname' is a Mongoose virtual — it cannot be selected via populate's
+    // field projection string. Omit it here; getUserName() in otpService will
+    // recompute it from firstName + lastName via .toObject({ virtuals: true }).
+    const expiredLists = await Checklist.find({
+        isFreeze: true,
+        frozenAt: { $exists: true, $ne: null, $lt: cutoffDate }
     })
-        .populate('createdBy', 'firstName lastName email fullname')
-        .populate('frozenBy', 'firstName lastName email fullname')
-        .populate('listItems.createdBy', 'firstName lastName email fullname')
-        .populate('listItems.completedBy', 'firstName lastName email fullname');
+        .populate({ path: 'createdBy', select: 'firstName lastName email' })
+        .populate({ path: 'frozenBy', select: 'firstName lastName email' })
+        .populate({ path: 'listItems.createdBy', select: 'firstName lastName email' })
+        .populate({ path: 'listItems.completedBy', select: 'firstName lastName email' });
 
     if (expiredLists.length === 0) {
         return { deletedCount: 0 };
@@ -695,24 +698,36 @@ exports.deleteExpiredChecklists = async (io) => {
     // Send email to creators before deleting
     for (const list of expiredLists) {
         try {
-            const creator = list.createdBy;
-            console.log(`[Checklist Cleanup] Processing checklist "${list.title}" (ID: ${list._id}), creator:`, creator ? creator.email : 'N/A');
-            if (creator && typeof creator === 'object' && creator.email) {
+            let creator = list.createdBy;
+
+            // If createdBy is not populated (still a raw ObjectId) or email is missing,
+            // fall back to a direct User lookup so we always have the creator's email.
+            if (!creator || typeof creator !== 'object' || !creator.email) {
+                const creatorId = creator && creator._id ? creator._id : creator;
+                if (creatorId) {
+                    creator = await User.findById(creatorId).select('firstName lastName email');
+                    console.log(`[Checklist Cleanup] Fallback User lookup for checklist "${list.title}": ${creator ? creator.email : 'not found'}`); 
+                }
+            }
+
+            console.log(`[Checklist Cleanup] Processing checklist "${list.title}" (ID: ${list._id}), creator email: ${creator ? creator.email : 'N/A'}`);
+
+            if (creator && creator.email) {
                 const emailResult = await otpService.sendChecklistDeletionEmail(creator, list);
                 if (emailResult) {
                     console.log(`[Checklist Cleanup] Deletion email successfully sent to ${creator.email} for checklist "${list.title}"`);
                 } else {
-                    console.warn(`[Checklist Cleanup] Email service returned false when sending deletion email for checklist "${list.title}" (${list._id})`);
+                    console.warn(`[Checklist Cleanup] Email service returned false for checklist "${list.title}" (${list._id})`);
                 }
             } else {
-                console.warn(`[Checklist Cleanup] Skipped deletion email for checklist "${list.title}" (${list._id}): Creator email missing or not populated.`);
+                console.warn(`[Checklist Cleanup] Skipped deletion email for checklist "${list.title}" (${list._id}): Creator email could not be resolved.`);
             }
         } catch (emailError) {
             console.error(`[Checklist Cleanup] Error sending deletion email for checklist ${list._id}:`, emailError.message || emailError);
         }
     }
 
-    // Proceed to delete the expired documents from MongoDB only after sending emails[cite: 3]
+    // Delete expired checklists only after all emails have been dispatched
     const result = await Checklist.deleteMany({ _id: { $in: ids } });
 
     if (io) {
