@@ -132,9 +132,16 @@ const getUserName = (userRef, fallback = 'Unknown') => {
     return fullname || fallback;
 };
 
+const escapeHtml = (value) => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
 const sendChecklistDeletionEmail = async (user, checklist) => {
     // Resolve recipient email — handle both Mongoose doc and plain object
-    const recipientEmail = (typeof user.toObject === 'function'
+    const recipientEmail = (user && typeof user.toObject === 'function'
         ? user.toObject({ virtuals: true })
         : user
     )?.email;
@@ -166,7 +173,8 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
         ? checklist.toObject({ virtuals: true })
         : checklist;
 
-    const subject = `Checklist Deleted: ${checklistData.title}`;
+    const title = checklistData.title || 'Untitled checklist';
+    const subject = `Checklist Deleted: ${title}`;
 
     const createdDate = checklistData.createdAt
         ? new Date(checklistData.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -216,9 +224,9 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
 
             itemsHtml += `
                 <tr class="${rowClass}" style="background-color: ${rowColor}; border-bottom: 1px solid #E5E7EB;">
-                    <td class="email-td email-td-text" style="width: 40%; padding: 10px; color: #111827; font-size: 13px; word-break: break-word; overflow-wrap: break-word; border-right: 1px solid #E5E7EB;">${item.text}</td>
-                    <td class="email-td email-td-sub" style="width: 30%; padding: 10px; color: #6B7280; font-size: 13px; word-break: break-word; overflow-wrap: break-word; border-right: 1px solid #E5E7EB;">${createdByName}</td>
-                    <td class="email-td ${completedClass}" style="width: 30%; padding: 10px; color: ${completedColor}; font-size: 13px; word-break: break-word; overflow-wrap: break-word;">${completedByName}</td>
+                    <td class="email-td email-td-text" style="width: 40%; padding: 10px; color: #111827; font-size: 13px; word-break: break-word; overflow-wrap: break-word; border-right: 1px solid #E5E7EB;">${escapeHtml(item.text || 'Untitled item')}</td>
+                    <td class="email-td email-td-sub" style="width: 30%; padding: 10px; color: #6B7280; font-size: 13px; word-break: break-word; overflow-wrap: break-word; border-right: 1px solid #E5E7EB;">${escapeHtml(createdByName)}</td>
+                    <td class="email-td ${completedClass}" style="width: 30%; padding: 10px; color: ${completedColor}; font-size: 13px; word-break: break-word; overflow-wrap: break-word;">${escapeHtml(completedByName)}</td>
                 </tr>
             `;
         });
@@ -242,15 +250,15 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
                 <p style="margin: 0; color: #7F1D1D; font-size: 14px;">Your checklist has been automatically deleted after reaching its 30-day retention period.</p>
             </div>
 
-            <p>Hello <strong>${firstName}</strong>,</p>
-            <p>This is an automated notification to inform you that your checklist <strong>"${checklistData.title}"</strong> has been permanently deleted from our system.</p>
+            <p>Hello <strong>${escapeHtml(firstName)}</strong>,</p>
+            <p>This is an automated notification to inform you that your checklist <strong>"${escapeHtml(title)}"</strong> has been permanently deleted from our system.</p>
             
             <div style="background-color: #F9FAFB; padding: 10px; border-radius: 8px; margin: 25px 0; border: 1px solid #E5E7EB;">
                 <h4 style="margin: 0 0 15px 0; color: #374151; font-size: 16px; border-bottom: 1px solid #E5E7EB; padding-bottom: 10px;">Checklist Summary</h4>
                 <table style="width: 100%; border-collapse: collapse;">
                     <tr>
                         <td style="padding: 6px 0; color: #6B7280; width: 140px; font-size: 14px;">Title:</td>
-                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${checklistData.title}${checklistData.isPrivate ? ' (Private)' : ''}</td>
+                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${escapeHtml(title)}${checklistData.isPrivate ? ' (Private)' : ''}</td>
                     </tr>
                     <tr>
                         <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Created Date:</td>
@@ -262,7 +270,7 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
                     </tr>
                     <tr>
                         <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Completed By:</td>
-                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${frozenByName}</td>
+                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${escapeHtml(frozenByName)}</td>
                     </tr>
                 </table>
 

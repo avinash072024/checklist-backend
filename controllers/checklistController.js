@@ -713,7 +713,21 @@ exports.deleteExpiredChecklists = async (io) => {
             console.log(`[Checklist Cleanup] Processing checklist "${list.title}" (ID: ${list._id}), creator email: ${creator ? creator.email : 'N/A'}`);
 
             if (creator && creator.email) {
-                const emailResult = await otpService.sendChecklistDeletionEmail(creator, list);
+                const emailChecklist = {
+                    title: list.title,
+                    createdAt: list.createdAt,
+                    frozenAt: list.frozenAt,
+                    isPrivate: list.isPrivate,
+                    frozenBy: list.frozenBy,
+                    listItems: (Array.isArray(list.listItems) ? list.listItems : []).map((item) => ({
+                        text: item.text,
+                        completed: item.completed,
+                        createdBy: item.createdBy,
+                        completedBy: item.completedBy
+                    }))
+                };
+
+                const emailResult = await otpService.sendChecklistDeletionEmail(creator, emailChecklist);
                 if (emailResult) {
                     console.log(`[Checklist Cleanup] Deletion email successfully sent to ${creator.email} for checklist "${list.title}"`);
                 } else {
