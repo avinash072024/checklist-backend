@@ -299,6 +299,5 @@ module.exports = {
     sendOTPEmail,
     sendOTPSMS,
     sendOTP,
-    sendRegistrationSuccessEmail,
-    sendChecklistDeletionEmail
+    sendRegistrationSuccessEmail
 };
