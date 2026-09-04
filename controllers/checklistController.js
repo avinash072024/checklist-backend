@@ -1135,7 +1135,7 @@ exports.toggleFreezeChecklist = async (req, res) => {
 
         res.json({
             success: true,
-            message: `Checklist ${checklist.isFreeze ? 'completed' : 'activate'} successfully`,
+            message: `Checklist ${checklist.isFreeze ? 'closed' : 'activate'} successfully`,
             data: formattedData
         });
     } catch (err) {
