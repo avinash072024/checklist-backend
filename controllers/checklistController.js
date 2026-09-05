@@ -601,7 +601,7 @@
 const Checklist = require('../models/Checklist');
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
-const { sendChecklistDeletionEmail } = require('../utils/otpService');
+const { sendChecklistFrozenEmail } = require('../utils/otpService');
 
 const CHECKLIST_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const CHECKLIST_CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -616,34 +616,13 @@ exports.deleteExpiredChecklists = async (io) => {
     const expiredLists = await Checklist.find({
         isFreeze: true,
         frozenAt: { $exists: true, $ne: null, $lt: cutoffDate }
-    })
-        .populate('createdBy', 'firstName lastName email fullname')
-        .populate('frozenBy', 'firstName lastName email fullname')
-        .populate('listItems.createdBy', 'firstName lastName email fullname')
-        .populate('listItems.completedBy', 'firstName lastName email fullname');
+    });
 
     if (expiredLists.length === 0) {
         return { deletedCount: 0 };
     }
 
     console.log(`[Checklist Cleanup] Found ${expiredLists.length} expired checklist(s) to process.`);
-
-    // Email each checklist's creator with the full checklist details BEFORE deleting it,
-    // since none of this data (items, names, etc.) will exist afterwards.
-    // A failed/slow email must never block deletion, so failures are caught per-checklist.
-    await Promise.all(
-        expiredLists.map(async (checklist) => {
-            try {
-                if (!checklist.createdBy || !checklist.createdBy.email) {
-                    console.warn(`[Checklist Cleanup] Skipping deletion email for checklist ${checklist._id}: creator/email not found.`);
-                    return;
-                }
-                await sendChecklistDeletionEmail(checklist.createdBy, checklist);
-            } catch (err) {
-                console.error(`[Checklist Cleanup] Failed to send deletion email for checklist ${checklist._id}:`, err.message);
-            }
-        })
-    );
 
     const ids = expiredLists.map((list) => list._id);
 
@@ -1132,6 +1111,8 @@ exports.toggleFreezeChecklist = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Checklist not found' });
         }
 
+        const wasFrozen = checklist.isFreeze;
+
         checklist.isFreeze = isFreeze !== undefined ? isFreeze : !checklist.isFreeze;
         checklist.frozenBy = checklist.isFreeze ? userId : null;
         checklist.frozenAt = checklist.isFreeze ? new Date() : null;
@@ -1147,6 +1128,15 @@ exports.toggleFreezeChecklist = async (req, res) => {
         const formattedData = formatChecklist(updatedChecklist);
 
         getIo(req).emit('checklist:frozen', { checklistId, isFreeze: checklist.isFreeze });
+
+        // Notify the checklist creator by email whenever the checklist newly becomes frozen
+        // (skip when un-freezing, or when it was already frozen). Email failures must never
+        // break the freeze/unfreeze response.
+        if (updatedChecklist.isFreeze && !wasFrozen) {
+            sendChecklistFrozenEmail(updatedChecklist.createdBy, updatedChecklist).catch((err) => {
+                console.error(`[Checklist Frozen Email] Failed to send for checklist ${checklistId}:`, err.message || err);
+            });
+        }
 
         res.json({
             success: true,

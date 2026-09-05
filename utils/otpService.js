@@ -240,11 +240,6 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
     }
 
     const firstName = getUserName(user, 'there').split(' ')[0];
-    const createdByName = getUserName(checklist.createdBy, firstName);
-
-    const totalItems = resolvedItems.length;
-    const completedItems = resolvedItems.filter(item => item.completed).length;
-    const pendingItems = totalItems - completedItems;
 
     const html = `
         <div style="font-family: Calibri, sans-serif; padding: 10px; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px;">
@@ -266,10 +261,6 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
                         <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${escapeHtml(title)}${checklistData.isPrivate ? ' (Private)' : ''}</td>
                     </tr>
                     <tr>
-                        <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Created By:</td>
-                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${escapeHtml(createdByName)}</td>
-                    </tr>
-                    <tr>
                         <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Created Date:</td>
                         <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${createdDate}</td>
                     </tr>
@@ -280,18 +271,6 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
                     <tr>
                         <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Completed By:</td>
                         <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${escapeHtml(frozenByName)}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Total Items:</td>
-                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${totalItems}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Completed Items:</td>
-                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${completedItems}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Pending Items:</td>
-                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${pendingItems}</td>
                     </tr>
                 </table>
 
@@ -314,6 +293,170 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
     return await sendEmail(recipientEmail, subject, html);
 };
 
+// Build the shared checklist-items HTML table used by both the frozen and deletion emails
+const buildChecklistItemsHtml = (resolvedItems) => {
+    if (!resolvedItems || resolvedItems.length === 0) {
+        return `<p style="color: #6B7280; font-size: 14px;">No items found in this checklist.</p>`;
+    }
+
+    let itemsHtml = `
+        <style>
+            @media (prefers-color-scheme: dark) {
+                .email-wrapper { background-color: #111827 !important; }
+                .email-table { background-color: #111827 !important; border-color: #374151 !important; }
+                .email-th { background-color: #1F2937 !important; color: #F9FAFB !important; border-color: #374151 !important; }
+                .email-th th { border-color: #374151 !important; color: #F9FAFB !important; }
+                .email-tr-even { background-color: #1F2937 !important; border-bottom: 1px solid #374151 !important; }
+                .email-tr-odd { background-color: #111827 !important; border-bottom: 1px solid #374151 !important; }
+                .email-td { border-color: #374151 !important; }
+                .email-td-text { color: #F3F4F6 !important; }
+                .email-td-sub { color: #9CA3AF !important; }
+                .email-td-completed { color: #9CA3AF !important; }
+                .email-td-pending { color: #F87171 !important; }
+            }
+        </style>
+        <div class="email-wrapper" style="width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; margin-top: 15px;">
+            <table class="email-table" style="width: 100%; min-width: 320px; table-layout: fixed; border-collapse: collapse; background-color: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 6px; overflow: hidden;">
+                <thead>
+                    <tr class="email-th" style="background-color: #F3F4F6; border-bottom: 2px solid #E5E7EB; text-align: left;">
+                        <th style="width: 40%; padding: 10px; color: #374151; font-size: 13px; font-weight: 600; border-right: 1px solid #E5E7EB;">Item&nbsp;Name</th>
+                        <th style="width: 30%; padding: 10px; color: #374151; font-size: 13px; font-weight: 600; border-right: 1px solid #E5E7EB;">Created&nbsp;By</th>
+                        <th style="width: 30%; padding: 10px; color: #374151; font-size: 13px; font-weight: 600;">Completed&nbsp;By</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    resolvedItems.forEach((item, index) => {
+        const rowColor = index % 2 === 0 ? '#FFFFFF' : '#F9FAFB';
+        const rowClass = index % 2 === 0 ? 'email-tr-even' : 'email-tr-odd';
+
+        const { createdByName, completedByName } = item;
+
+        const isPending = completedByName === 'Pending';
+        const completedClass = isPending ? 'email-td-pending' : 'email-td-completed';
+        const completedColor = isPending ? '#EF4444' : '#6B7280';
+
+        itemsHtml += `
+            <tr class="${rowClass}" style="background-color: ${rowColor}; border-bottom: 1px solid #E5E7EB;">
+                <td class="email-td email-td-text" style="width: 40%; padding: 10px; color: #111827; font-size: 13px; word-break: break-word; overflow-wrap: break-word; border-right: 1px solid #E5E7EB;">${escapeHtml(item.text || 'Untitled item')}</td>
+                <td class="email-td email-td-sub" style="width: 30%; padding: 10px; color: #6B7280; font-size: 13px; word-break: break-word; overflow-wrap: break-word; border-right: 1px solid #E5E7EB;">${escapeHtml(createdByName)}</td>
+                <td class="email-td ${completedClass}" style="width: 30%; padding: 10px; color: ${completedColor}; font-size: 13px; word-break: break-word; overflow-wrap: break-word;">${escapeHtml(completedByName)}</td>
+            </tr>
+        `;
+    });
+
+    itemsHtml += `
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    return itemsHtml;
+};
+
+// Resolve creator/frozen-by names and per-item names from a populated (Mongoose) checklist doc,
+// BEFORE calling toObject(), so nested populated subdocuments keep their 'fullname' virtual.
+const resolveChecklistEmailData = (checklist) => {
+    const createdByName = getUserName(checklist.createdBy, 'Unknown');
+    const frozenByName = getUserName(checklist.frozenBy, 'System');
+
+    const resolvedItems = Array.isArray(checklist.listItems)
+        ? checklist.listItems.map(item => ({
+            text: item.text,
+            completed: item.completed,
+            createdByName: getUserName(item.createdBy, 'Unknown'),
+            completedByName: item.completedBy
+                ? getUserName(item.completedBy, 'System')
+                : (item.completed ? 'System' : 'Pending')
+        }))
+        : [];
+
+    const checklistData = typeof checklist.toObject === 'function'
+        ? checklist.toObject({ virtuals: true })
+        : checklist;
+
+    return { createdByName, frozenByName, resolvedItems, checklistData };
+};
+
+// Send checklist details to the checklist creator's email when the checklist is frozen (marked completed)
+const sendChecklistFrozenEmail = async (user, checklist) => {
+    // Resolve recipient email — handle both Mongoose doc and plain object
+    const recipientEmail = (user && typeof user.toObject === 'function'
+        ? user.toObject({ virtuals: true })
+        : user
+    )?.email;
+
+    if (!recipientEmail) {
+        console.warn(`[Email Service] Cannot send checklist frozen email: creator email is missing.`);
+        return false;
+    }
+
+    const { createdByName, frozenByName, resolvedItems, checklistData } = resolveChecklistEmailData(checklist);
+
+    const title = checklistData.title || 'Untitled checklist';
+    const subject = `Checklist Completed: ${title}`;
+    const totalItems = resolvedItems.length;
+
+    const frozenDate = checklistData.frozenAt
+        ? new Date(checklistData.frozenAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+        : 'N/A';
+
+    const itemsHtml = buildChecklistItemsHtml(resolvedItems);
+    const firstName = getUserName(user, 'there').split(' ')[0];
+
+    const html = `
+        <div style="font-family: Calibri, sans-serif; padding: 10px; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px;">
+            <h2 style="color: #4F46E5; text-align: center;">CheckList App</h2>
+
+            <div style="background-color: #ECFDF5; border-left: 4px solid #10B981; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
+                <h3 style="color: #047857; margin: 0 0 5px 0; font-size: 18px;">Checklist Completed</h3>
+                <p style="margin: 0; color: #065F46; font-size: 14px;">Your checklist has been marked as completed and is now frozen.</p>
+            </div>
+
+            <p>Hello <strong>${escapeHtml(firstName)}</strong>,</p>
+            <p>Here are the details of your checklist <strong>"${escapeHtml(title)}"</strong>.</p>
+
+            <div style="background-color: #F9FAFB; padding: 10px; border-radius: 8px; margin: 25px 0; border: 1px solid #E5E7EB;">
+                <h4 style="margin: 0 0 15px 0; color: #374151; font-size: 16px; border-bottom: 1px solid #E5E7EB; padding-bottom: 10px;">Checklist Summary</h4>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 6px 0; color: #6B7280; width: 160px; font-size: 14px;">Checklist Name:</td>
+                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${escapeHtml(title)}${checklistData.isPrivate ? ' (Private)' : ''}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Created By:</td>
+                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${escapeHtml(createdByName)}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Total Items:</td>
+                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${totalItems}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Frozen By:</td>
+                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${escapeHtml(frozenByName)}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Frozen Date:</td>
+                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${frozenDate}</td>
+                    </tr>
+                </table>
+
+                <h4 style="margin: 25px 0 10px 0; color: #374151; font-size: 16px;">Checklist Items</h4>
+                ${itemsHtml}
+            </div>
+
+            <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 20px 0;">
+
+            <p style="color: #9CA3AF; font-size: 12px; text-align: center; margin: 0;">
+                &copy; ${new Date().getFullYear()} CheckList App. All rights reserved.
+            </p>
+        </div>
+    `;
+
+    return await sendEmail(recipientEmail, subject, html);
+};
+
 module.exports = {
     generateOTP,
     sendEmail,
@@ -321,5 +464,6 @@ module.exports = {
     sendOTPSMS,
     sendOTP,
     sendRegistrationSuccessEmail,
-    sendChecklistDeletionEmail
+    sendChecklistDeletionEmail,
+    sendChecklistFrozenEmail
 };
