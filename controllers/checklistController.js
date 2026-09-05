@@ -613,8 +613,6 @@ const getIo = (req) => req.app.locals.io;
 exports.deleteExpiredChecklists = async (io) => {
     const cutoffDate = new Date(Date.now() - CHECKLIST_RETENTION_MS);
 
-    // Populate creator/frozenBy/item-user fields — sendChecklistDeletionEmail needs
-    // the creator's email plus display names for the summary it emails out.
     const expiredLists = await Checklist.find({
         isFreeze: true,
         frozenAt: { $exists: true, $ne: null, $lt: cutoffDate }
@@ -630,20 +628,22 @@ exports.deleteExpiredChecklists = async (io) => {
 
     console.log(`[Checklist Cleanup] Found ${expiredLists.length} expired checklist(s) to process.`);
 
-    // Email each checklist's creator their summary BEFORE the records are deleted.
-    // Run these in parallel but don't let a failed/slow email block the cleanup.
-    const emailResults = await Promise.allSettled(
-        expiredLists.map((list) => sendChecklistDeletionEmail(list.createdBy, list))
+    // Email each checklist's creator with the full checklist details BEFORE deleting it,
+    // since none of this data (items, names, etc.) will exist afterwards.
+    // A failed/slow email must never block deletion, so failures are caught per-checklist.
+    await Promise.all(
+        expiredLists.map(async (checklist) => {
+            try {
+                if (!checklist.createdBy || !checklist.createdBy.email) {
+                    console.warn(`[Checklist Cleanup] Skipping deletion email for checklist ${checklist._id}: creator/email not found.`);
+                    return;
+                }
+                await sendChecklistDeletionEmail(checklist.createdBy, checklist);
+            } catch (err) {
+                console.error(`[Checklist Cleanup] Failed to send deletion email for checklist ${checklist._id}:`, err.message);
+            }
+        })
     );
-
-    emailResults.forEach((result, index) => {
-        const checklistId = expiredLists[index]._id.toString();
-        if (result.status === 'rejected') {
-            console.error(`[Checklist Cleanup] Failed to send deletion email for checklist ${checklistId}:`, result.reason?.message || result.reason);
-        } else if (result.value === false) {
-            console.warn(`[Checklist Cleanup] Deletion email not sent for checklist ${checklistId} (no email or send failure).`);
-        }
-    });
 
     const ids = expiredLists.map((list) => list._id);
 

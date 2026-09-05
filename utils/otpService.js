@@ -9,7 +9,7 @@ const getSmtpConfig = () => {
     const smtpPort = process.env.SMTP_PORT || process.env.EMAIL_PORT || 465;
     const smtpUser = process.env.SMTP_USER || process.env.EMAIL_USER;
     const smtpPass = process.env.SMTP_PASS || process.env.EMAIL_PASS;
-    const fromEmail = process.env.EMAIL_FROM || smtpUser || '"CheckList App" <avinashmarbhal1994@outlook.com>';
+    const fromEmail = process.env.EMAIL_FROM || smtpUser || '"CheckList App" <avinashmarbhal1994@gmail.com>';
 
     return { smtpHost, smtpPort, smtpUser, smtpPass, fromEmail };
 };
@@ -183,10 +183,6 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
         ? new Date(checklistData.frozenAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
         : 'N/A';
 
-    const totalItems = resolvedItems.length;
-    const completedItemsCount = resolvedItems.filter(item => item.completed).length;
-    const pendingItemsCount = totalItems - completedItemsCount;
-
     let itemsHtml = '';
     if (resolvedItems.length > 0) {
         itemsHtml = `
@@ -244,6 +240,11 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
     }
 
     const firstName = getUserName(user, 'there').split(' ')[0];
+    const createdByName = getUserName(checklist.createdBy, firstName);
+
+    const totalItems = resolvedItems.length;
+    const completedItems = resolvedItems.filter(item => item.completed).length;
+    const pendingItems = totalItems - completedItems;
 
     const html = `
         <div style="font-family: Calibri, sans-serif; padding: 10px; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px;">
@@ -265,6 +266,10 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
                         <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${escapeHtml(title)}${checklistData.isPrivate ? ' (Private)' : ''}</td>
                     </tr>
                     <tr>
+                        <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Created By:</td>
+                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${escapeHtml(createdByName)}</td>
+                    </tr>
+                    <tr>
                         <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Created Date:</td>
                         <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${createdDate}</td>
                     </tr>
@@ -282,11 +287,11 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
                     </tr>
                     <tr>
                         <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Completed Items:</td>
-                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${completedItemsCount}</td>
+                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${completedItems}</td>
                     </tr>
                     <tr>
                         <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Pending Items:</td>
-                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${pendingItemsCount}</td>
+                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${pendingItems}</td>
                     </tr>
                 </table>
 
