@@ -598,16 +598,10 @@
 
 
 
-
-
-
-
-
-
-
 const Checklist = require('../models/Checklist');
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
+const { sendChecklistDeletionEmail } = require('../utils/otpService');
 
 const CHECKLIST_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const CHECKLIST_CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -619,16 +613,37 @@ const getIo = (req) => req.app.locals.io;
 exports.deleteExpiredChecklists = async (io) => {
     const cutoffDate = new Date(Date.now() - CHECKLIST_RETENTION_MS);
 
+    // Populate creator/frozenBy/item-user fields — sendChecklistDeletionEmail needs
+    // the creator's email plus display names for the summary it emails out.
     const expiredLists = await Checklist.find({
         isFreeze: true,
         frozenAt: { $exists: true, $ne: null, $lt: cutoffDate }
-    });
+    })
+        .populate('createdBy', 'firstName lastName email fullname')
+        .populate('frozenBy', 'firstName lastName email fullname')
+        .populate('listItems.createdBy', 'firstName lastName email fullname')
+        .populate('listItems.completedBy', 'firstName lastName email fullname');
 
     if (expiredLists.length === 0) {
         return { deletedCount: 0 };
     }
 
     console.log(`[Checklist Cleanup] Found ${expiredLists.length} expired checklist(s) to process.`);
+
+    // Email each checklist's creator their summary BEFORE the records are deleted.
+    // Run these in parallel but don't let a failed/slow email block the cleanup.
+    const emailResults = await Promise.allSettled(
+        expiredLists.map((list) => sendChecklistDeletionEmail(list.createdBy, list))
+    );
+
+    emailResults.forEach((result, index) => {
+        const checklistId = expiredLists[index]._id.toString();
+        if (result.status === 'rejected') {
+            console.error(`[Checklist Cleanup] Failed to send deletion email for checklist ${checklistId}:`, result.reason?.message || result.reason);
+        } else if (result.value === false) {
+            console.warn(`[Checklist Cleanup] Deletion email not sent for checklist ${checklistId} (no email or send failure).`);
+        }
+    });
 
     const ids = expiredLists.map((list) => list._id);
 

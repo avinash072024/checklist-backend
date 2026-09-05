@@ -183,6 +183,10 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
         ? new Date(checklistData.frozenAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
         : 'N/A';
 
+    const totalItems = resolvedItems.length;
+    const completedItemsCount = resolvedItems.filter(item => item.completed).length;
+    const pendingItemsCount = totalItems - completedItemsCount;
+
     let itemsHtml = '';
     if (resolvedItems.length > 0) {
         itemsHtml = `
@@ -272,6 +276,18 @@ const sendChecklistDeletionEmail = async (user, checklist) => {
                         <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Completed By:</td>
                         <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${escapeHtml(frozenByName)}</td>
                     </tr>
+                    <tr>
+                        <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Total Items:</td>
+                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${totalItems}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Completed Items:</td>
+                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${completedItemsCount}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 0; color: #6B7280; font-size: 14px;">Pending Items:</td>
+                        <td style="padding: 6px 0; color: #111827; font-weight: bold; font-size: 14px;">${pendingItemsCount}</td>
+                    </tr>
                 </table>
 
                 <h4 style="margin: 25px 0 10px 0; color: #374151; font-size: 16px;">Checklist Items</h4>
@@ -299,5 +315,6 @@ module.exports = {
     sendOTPEmail,
     sendOTPSMS,
     sendOTP,
-    sendRegistrationSuccessEmail
+    sendRegistrationSuccessEmail,
+    sendChecklistDeletionEmail
 };
